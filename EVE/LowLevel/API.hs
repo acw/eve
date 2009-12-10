@@ -61,6 +61,10 @@ import Network.Stream
 import Network.URI
 import Text.XML.Light
 
+-----------------------------------------------------------------------------
+-- Data types / classes for API keys
+--
+
 data LimitedAPIKey = LAPIK { limUserID  :: String, limAPIKey  :: String }
 data FullAPIKey    = FAPIK { fullUserID :: String, fullAPIKey :: String }
 
@@ -73,8 +77,23 @@ instance APIKey LimitedAPIKey where
 instance APIKey FullAPIKey where
   keyToArgs (FAPIK x y) = [("userID", x), ("apiKey", y)]
 
-type    LowLevelResult = Either String Element
+-----------------------------------------------------------------------------
+-- Errors and low-level types
+--
+
+data LowLevelError = ConnectionReset
+                   | ConnectionClosed
+                   | HTTPParseError String
+                   | XMLParseError String
+                   | UnknownError String
+ deriving (Show,Eq)
+
+type    LowLevelResult = Either LowLevelError Element
 newtype CharacterID    = CID String
+
+-----------------------------------------------------------------------------
+-- The many, many API calls
+--
 
 -- http://wiki.eve-id.net/APIv2_Page_Index#Notes
 -- is a very helpful page
@@ -238,24 +257,29 @@ mapSovereigntyStatus = runRequest "map/SovereigntyStatus" []
 serverStatus :: IO LowLevelResult
 serverStatus = runRequest "server/ServerStatus" []
 
+-----------------------------------------------------------------------------
+-- Some helper functions to make writing the above less tedious.
 --
 
 standardRequest :: APIKey k => String -> k -> CharacterID -> IO LowLevelResult
 standardRequest proc key (CID cid) = runRequest proc args
  where args = keyToArgs key ++ [("characterID", cid)]
 
-runRequest :: String -> [(String, String)] -> IO (Either String Element)
+runRequest :: String -> [(String, String)] -> IO LowLevelResult
 runRequest procedure args = do
   res <- simpleHTTP req
-  return $ combineErrors $ (parseXMLDoc . rspBody) `fmap` res
+  return $ case res of
+             Left ErrorReset     -> Left   ConnectionReset
+             Left ErrorClosed    -> Left   ConnectionClosed
+             Left (ErrorParse x) -> Left $ HTTPParseError x
+             Left (ErrorMisc x)  -> Left $ UnknownError x
+             Right response      ->
+               case parseXMLDoc $ rspBody response of
+                 Nothing         -> Left $ XMLParseError $ rspBody response
+                 Just xml        -> Right xml
  where
   Just uri = parseURI $ "http://api.eve-online.com/" ++ procedure ++ ".xml.aspx"
   req      = Request uri POST hdrs body
   hdrs     = [Header HdrContentType "application/x-www-form-urlencoded",
               Header HdrContentLength (show $ length body)]
   body     = intercalate "," $ map (\ (a,b) -> a ++ "=" ++ b) args
-
-combineErrors :: Either ConnError (Maybe a) -> Either String a
-combineErrors (Left x)         = Left (show x)
-combineErrors (Right Nothing)  = Left "Could not parse XML"
-combineErrors (Right (Just x)) = Right x
