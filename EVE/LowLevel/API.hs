@@ -90,6 +90,7 @@ data LowLevelError = ConnectionReset
 
 type    LowLevelResult = Either LowLevelError Element
 newtype CharacterID    = CID String
+newtype ItemID         = IID String
 
 -----------------------------------------------------------------------------
 -- The many, many API calls
@@ -188,8 +189,11 @@ corpMemberSecurityLog = standardRequest "corp/MemberSecurityLog"
 corpMemberTracking :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMemberTracking = standardRequest "corp/MemberTracking"
 
-corpPOSDetails :: FullAPIKey -> IO LowLevelResult
-corpPOSDetails = undefined
+corpPOSDetails :: FullAPIKey -> CharacterID -> ItemID -> IO LowLevelResult
+corpPOSDetails k (CID cid) (IID iid) = runRequest "corp/StarbaseDetail" xs
+ where
+  xs      = [("version","2")] ++ keyToArgs k ++ details
+  details = [("characterID", cid), ("itemID", iid)]
 
 corpPOSList :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpPOSList = extendedRequest [("version","2")] "corp/StarbaseList"
