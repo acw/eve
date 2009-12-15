@@ -227,11 +227,13 @@ eveFactionalWarfareStats = runRequest "eve/FacWarStats" []
 eveFactionalWarfareTop100 :: IO LowLevelResult
 eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" []
 
-eveIDToName :: IO LowLevelResult
-eveIDToName = undefined
+eveIDToName :: [CharacterID] -> IO LowLevelResult
+eveIDToName ids = runRequest "eve/CharacterName" [("Ids",ids')]
+ where ids' = intercalate "," $ map (\ (CID x) -> x) ids
 
-eveNameToID :: IO LowLevelResult
-eveNameToID= undefined
+eveNameToID :: [String] -> IO LowLevelResult
+eveNameToID names = runRequest "eve/CharacterID" [("names",names')]
+ where names' = intercalate "," names
 
 eveRefTypesList :: IO LowLevelResult
 eveRefTypesList = runRequest "eve/RefTypes" []
