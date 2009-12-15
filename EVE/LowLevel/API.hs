@@ -91,6 +91,7 @@ data LowLevelError = ConnectionReset
 type    LowLevelResult = Either LowLevelError Element
 newtype CharacterID    = CID String
 newtype ItemID         = IID String
+newtype RefID          = RID String
 
 -----------------------------------------------------------------------------
 -- The many, many API calls
@@ -117,8 +118,8 @@ charFactionalWarfareStats = standardRequest "char/FacWarStats"
 charIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charIndustryJobs = standardRequest "char/IndustryJobs"
 
-charKillLogs :: FullAPIKey -> IO LowLevelResult
-charKillLogs = undefined
+charKillLogs :: FullAPIKey -> CharacterID -> Maybe RefID -> IO LowLevelResult
+charKillLogs = walkableRequest "char/Killlog" "beforeKillID"
 
 charMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMarketOrders = standardRequest "char/MarketOrders"
@@ -135,11 +136,14 @@ charSkillQueue = standardRequest "char/SkillQueue"
 charStandings :: APIKey k => k -> CharacterID -> IO LowLevelResult
 charStandings = standardRequest "char/Standings"
 
-charWalletJournal :: FullAPIKey -> IO LowLevelResult
-charWalletJournal= undefined
+charWalletJournal :: FullAPIKey -> CharacterID -> Maybe RefID -> IO
+                     LowLevelResult
+charWalletJournal = walkableRequest "char/WalletJournal" "beforeRefID"
 
-charWalletTransactions :: FullAPIKey -> IO LowLevelResult
-charWalletTransactions= undefined
+charWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
+                          IO LowLevelResult
+charWalletTransactions = 
+  walkableRequest "char/WalletTransactions" "beforeTransID"
 
 charMailMessages :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMailMessages = standardRequest "char/MailMessages"
@@ -168,8 +172,8 @@ corpFactionalWarfareStats = standardRequest "corp/FacWarStats"
 corpIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpIndustryJobs = standardRequest "corp/IndustryJobs"
 
-corpKillLogs :: FullAPIKey -> IO LowLevelResult
-corpKillLogs = undefined
+corpKillLogs :: FullAPIKey -> CharacterID -> Maybe RefID -> IO LowLevelResult
+corpKillLogs = walkableRequest "corp/KillLog" "beforeKillID"
 
 corpMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMarketOrders = standardRequest "corp/MarketOrders"
@@ -207,11 +211,14 @@ corpStandings = standardRequest "corp/Standings"
 corpTitles :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpTitles = standardRequest "corp/Titles"
 
-corpWalletJournal :: FullAPIKey -> IO LowLevelResult
-corpWalletJournal= undefined
+corpWalletJournal :: FullAPIKey -> CharacterID -> Maybe RefID ->
+                     IO LowLevelResult
+corpWalletJournal = walkableRequest "corp/WalletJournal" "beforeRefID"
 
-corpWalletTransactions :: FullAPIKey -> IO LowLevelResult
-corpWalletTransactions= undefined
+corpWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
+                          IO LowLevelResult
+corpWalletTransactions = 
+  walkableRequest "corp/WalletTransactions" "beforeTransID"
 
 eveAllianceList :: IO LowLevelResult
 eveAllianceList = runRequest "eve/AllianceList" []
@@ -266,6 +273,14 @@ serverStatus = runRequest "server/ServerStatus" []
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
 --
+
+walkableRequest :: APIKey k =>
+                   String -> String -> k -> CharacterID -> Maybe RefID ->
+                   IO LowLevelResult
+walkableRequest proc name k c ref = extendedRequest extra proc k c
+ where extra = case ref of
+                 Nothing        -> []
+                 Just (RID rid) -> [(name, rid)]
 
 extendedRequest :: APIKey k =>
                    [(String, String)] -> String -> k -> CharacterID -> 
