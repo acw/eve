@@ -104,8 +104,8 @@ characterList k = runRequest "account/Characters" (keyToArgs k)
 charAccountBalances :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charAccountBalances = standardRequest "char/AccountBalance"
 
-charAssetList :: FullAPIKey -> IO LowLevelResult
-charAssetList = undefined
+charAssetList :: FullAPIKey -> CharacterID -> IO LowLevelResult
+charAssetList = extendedRequest [("version", "2")] "char/AssetList"
 
 characterSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
 characterSheet = standardRequest "char/CharacterSheet"
@@ -149,11 +149,11 @@ charNotifications = standardRequest "char/Notifications"
 charMailingLists :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMailingLists = standardRequest "char/mailinglists"
 
-corpAccountBalances :: FullAPIKey -> IO LowLevelResult
-corpAccountBalances= undefined
+corpAccountBalances :: FullAPIKey -> CharacterID -> IO LowLevelResult
+corpAccountBalances = standardRequest "corp/AccountBalance"
 
 corpAssetList :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpAssetList = undefined
+corpAssetList = extendedRequest [("version", "2")] "corp/AssetList"
 
 corpContainerLog :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpContainerLog = standardRequest "corp/ContainerLog"
@@ -191,8 +191,8 @@ corpMemberTracking = standardRequest "corp/MemberTracking"
 corpPOSDetails :: FullAPIKey -> IO LowLevelResult
 corpPOSDetails = undefined
 
-corpPOSList :: FullAPIKey -> IO LowLevelResult
-corpPOSList = undefined
+corpPOSList :: FullAPIKey -> CharacterID -> IO LowLevelResult
+corpPOSList = extendedRequest [("version","2")] "corp/StarbaseList"
 
 corpShareholders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpShareholders = standardRequest "corp/Shareholders"
@@ -261,9 +261,14 @@ serverStatus = runRequest "server/ServerStatus" []
 -- Some helper functions to make writing the above less tedious.
 --
 
+extendedRequest :: APIKey k =>
+                   [(String, String)] -> String -> k -> CharacterID -> 
+                   IO LowLevelResult
+extendedRequest extras proc key (CID cid) = runRequest proc args
+ where args = keyToArgs key ++ extras ++ [("characterID", cid)]
+
 standardRequest :: APIKey k => String -> k -> CharacterID -> IO LowLevelResult
-standardRequest proc key (CID cid) = runRequest proc args
- where args = keyToArgs key ++ [("characterID", cid)]
+standardRequest = extendedRequest []
 
 runRequest :: String -> [(String, String)] -> IO LowLevelResult
 runRequest procedure args = do
