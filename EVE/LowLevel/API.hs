@@ -1,4 +1,6 @@
-module EVE.LowLevel.API(
+module EVE.LowLevel.API
+{-
+       (
          characterList
        , charAccountBalances
        , charAssetList
@@ -53,13 +55,21 @@ module EVE.LowLevel.API(
        , mapSovereigntyStatus
        , serverStatus
        )
+-}
  where
 
+import qualified Data.ByteString.Lazy.Char8 as BSC
+import Data.Digest.Pure.SHA
 import Data.List
+import Data.Maybe
+import Data.Time
 import Network.HTTP
 import Network.Stream
 import Network.URI
+import System.Locale
 import Text.XML.Light
+
+import EVE.LowLevel.DB
 
 -----------------------------------------------------------------------------
 -- Data types / classes for API keys
@@ -85,14 +95,16 @@ data LowLevelError = ConnectionReset
                    | ConnectionClosed
                    | HTTPParseError String
                    | XMLParseError String
+                   | EVEParseError Element
                    | UnknownError String
- deriving (Show,Eq)
+ deriving (Show)
 
-type    LowLevelResult = Either LowLevelError Element
-newtype CharacterID    = CID String
-newtype ItemID         = IID String
-newtype RefID          = RID String
+type    LowLevelResult a = Either LowLevelError a
+newtype CharacterID      = CID String
+newtype ItemID           = IID String
+newtype RefID            = RID String
 
+{-
 -----------------------------------------------------------------------------
 -- The many, many API calls
 --
@@ -267,45 +279,98 @@ mapSovereignty = runRequest "map/Sovereignty" []
 mapSovereigntyStatus :: IO LowLevelResult
 mapSovereigntyStatus = runRequest "map/SovereigntyStatus" []
 
-serverStatus :: IO LowLevelResult
-serverStatus = runRequest "server/ServerStatus" []
+-}
+
+serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
+serverStatus = runRequest "server/ServerStatus" [] pullExpire pullResult
+ where
+  pullExpire xml = fromMaybe zeroHour $ do
+    str <- getElementStringContent "cachedUntil" xml
+    parseTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" str
+  pullResult xml = fromMaybe (Left $ EVEParseError xml) $ do
+    open    <- mread =<< getElementStringContent "serverOpen" xml
+    players <- mread =<< getElementStringContent "onlinePlayers" xml
+    return $ Right (open, players)
+
+zeroHour :: UTCTime
+zeroHour = UTCTime (toEnum 0) (toEnum 0)
+
+mread :: Read a => String -> Maybe a
+mread = fmap fst . listToMaybe . reads
+
 
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
 --
 
 walkableRequest :: APIKey k =>
-                   String -> String -> k -> CharacterID -> Maybe RefID ->
-                   IO LowLevelResult
-walkableRequest proc name k c ref = extendedRequest extra proc k c
+                   String -> String -> 
+                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   EVEDB -> k -> CharacterID -> Maybe RefID ->
+                   IO (LowLevelResult a)
+walkableRequest proc name getExp finish db k c ref =
+  extendedRequest extra proc getExp finish db k c
  where extra = case ref of
                  Nothing        -> []
                  Just (RID rid) -> [(name, rid)]
 
-extendedRequest :: APIKey k =>
-                   [(String, String)] -> String -> k -> CharacterID -> 
-                   IO LowLevelResult
-extendedRequest extras proc key (CID cid) = runRequest proc args
- where args = keyToArgs key ++ extras ++ [("characterID", cid)]
-
-standardRequest :: APIKey k => String -> k -> CharacterID -> IO LowLevelResult
+standardRequest :: APIKey k => 
+                   String ->
+                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   EVEDB -> k -> CharacterID ->
+                   IO (LowLevelResult a)
 standardRequest = extendedRequest []
 
-runRequest :: String -> [(String, String)] -> IO LowLevelResult
-runRequest procedure args = do
-  res <- simpleHTTP req
-  return $ case res of
-             Left ErrorReset     -> Left   ConnectionReset
-             Left ErrorClosed    -> Left   ConnectionClosed
-             Left (ErrorParse x) -> Left $ HTTPParseError x
-             Left (ErrorMisc x)  -> Left $ UnknownError x
-             Right response      ->
-               case parseXMLDoc $ rspBody response of
-                 Nothing         -> Left $ XMLParseError $ rspBody response
-                 Just xml        -> Right xml
+extendedRequest :: APIKey k =>
+                   [(String, String)] -> String -> 
+                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   EVEDB -> k -> CharacterID ->
+                   IO (LowLevelResult a)
+extendedRequest extras proc getExp finish db key (CID cid) =
+  runRequest proc args getExp finish db
+ where args = keyToArgs key ++ extras ++ [("characterID", cid)]
+
+
+runRequest :: String -> [(String, String)] ->
+              (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+              EVEDB -> IO (LowLevelResult a)
+runRequest procedure args getExpireTime finishProcessing db =
+  lookupCachedOrDo db reqHash parseResult runRequest
  where
+  parseResult str =
+    case parseXMLDoc str of
+      Nothing -> Left  $ XMLParseError str
+      Just r  -> finishProcessing r
+  --
+  runRequest = do
+    res <- simpleHTTP req
+    case res of
+      Left ErrorReset     -> return $ Left   ConnectionReset
+      Left ErrorClosed    -> return $ Left   ConnectionClosed
+      Left (ErrorParse x) -> return $ Left $ HTTPParseError x
+      Left (ErrorMisc  x) -> return $ Left $ UnknownError x
+      Right resp          -> do
+        let body = rspBody resp
+        case parseXMLDoc body of
+          Nothing         -> return $ Left $ XMLParseError body
+          Just xml        -> do
+            let expireTime = getExpireTime xml
+                result     = finishProcessing xml
+            myTZ <- getCurrentTimeZone
+            let diffMinutes     = fromIntegral $ timeZoneMinutes myTZ
+                diffSeconds     = fromIntegral $ 60 * diffMinutes
+                expireTimeLocal = addUTCTime diffSeconds expireTime
+            addCachedResponse db reqHash body expireTimeLocal
+            return result
+  --
   Just uri = parseURI $ "http://api.eve-online.com/" ++ procedure ++ ".xml.aspx"
   req      = Request uri POST hdrs body
   hdrs     = [Header HdrContentType "application/x-www-form-urlencoded",
               Header HdrContentLength (show $ length body)]
   body     = intercalate "," $ map (\ (a,b) -> a ++ "=" ++ b) args
+  reqHash  = showDigest $ sha512 $ BSC.pack $ show req ++ body
+
+getElementStringContent :: String -> Element -> Maybe String
+getElementStringContent name xml = do
+  elem <- findElement (QName name Nothing Nothing) xml
+  return $ strContent elem
