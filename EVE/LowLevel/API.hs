@@ -52,12 +52,12 @@ module EVE.LowLevel.API
        , mapJumps
        , mapKills
        , mapSovereignty
-       , mapSovereigntyStatus
        , serverStatus
        )
 -}
  where
 
+import Control.Monad
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import Data.Digest.Pure.SHA
 import Data.List
@@ -273,24 +273,52 @@ mapJumps = runRequest "map/Jumps" []
 mapKills :: IO LowLevelResult
 mapKills = runRequest "map/Kills" []
 
-mapSovereignty :: IO LowLevelResult
-mapSovereignty = runRequest "map/Sovereignty" []
-
-mapSovereigntyStatus :: IO LowLevelResult
-mapSovereigntyStatus = runRequest "map/SovereigntyStatus" []
-
 -}
 
-serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
-serverStatus = runRequest "server/ServerStatus" [] pullExpire pullResult
+data OwnerInfo = AllianceID Integer
+               | CorporationID Integer
+               | FactionID Integer
+ deriving (Show, Eq)
+
+data SolarSystem = SolarSystem {
+       solarSystemID         :: Integer
+     , solarSystemName       :: String
+     , solarSystemOwner      :: [OwnerInfo]
+     }
+ deriving (Show, Eq)
+
+mapSovereignty :: EVEDB -> IO (LowLevelResult [SolarSystem])
+mapSovereignty = runRequest "map/Sovereignty" [] getCachedUntil pullResult
  where
-  pullExpire xml = fromMaybe zeroHour $ do
-    str <- getElementStringContent "cachedUntil" xml
-    parseTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" str
+  pullResult xml =
+    maybe (Left $ EVEParseError xml) Right $ sequence $ map readRow rows
+   where rows = findElements (QName "row" Nothing Nothing) xml
+  --
+  readRow :: Element -> Maybe SolarSystem
+  readRow row = do
+    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
+    name   <-           findAttr (QName "solarSystemName" Nothing Nothing) row
+    aliID  <- mread =<< findAttr (QName "allianceID"      Nothing Nothing) row
+    corID  <- mread =<< findAttr (QName "corporationID"   Nothing Nothing) row
+    facID  <- mread =<< findAttr (QName "factionID"       Nothing Nothing) row
+    let list0 = []
+        list1 = if aliID == 0 then list0 else (AllianceID aliID : list0)
+        list2 = if corID == 0 then list1 else (CorporationID corID : list1)
+        list3 = if facID == 0 then list2 else (FactionID facID : list2)
+    return $ SolarSystem id name list3
+
+serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
+serverStatus = runRequest "server/ServerStatus" [] getCachedUntil pullResult
+ where
   pullResult xml = fromMaybe (Left $ EVEParseError xml) $ do
     open    <- mread =<< getElementStringContent "serverOpen" xml
     players <- mread =<< getElementStringContent "onlinePlayers" xml
     return $ Right (open, players)
+
+getCachedUntil :: Element -> UTCTime
+getCachedUntil xml = fromMaybe zeroHour $ do
+  str <- getElementStringContent "cachedUntil" xml
+  parseTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" str
 
 zeroHour :: UTCTime
 zeroHour = UTCTime (toEnum 0) (toEnum 0)
