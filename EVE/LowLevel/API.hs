@@ -264,13 +264,30 @@ eveRefTypesList = runRequest "eve/RefTypes" []
 eveSkillTree :: IO LowLevelResult
 eveSkillTree = runRequest "eve/SkillTree" []
 
-mapFactionalWarfareOccupancyMap :: IO LowLevelResult
-mapFactionalWarfareOccupancyMap = runRequest "map/FacWarSystems" []
-
-mapJumps :: IO LowLevelResult
-mapJumps = runRequest "map/Jumps" []
-
 -}
+
+mapFactionalWarfareOccupancyMap
+  :: EVEDB -> IO (LowLevelResult [(Integer, String, Integer, String, Bool)])
+mapFactionalWarfareOccupancyMap =
+  runRequest "map/FacWarSystems" [] cachedUntil $ parseRows readRow
+ where
+  readRow r = do
+    ssID   <- mread =<< findAttr (QName "solarSystemID"      Nothing Nothing) r
+    ofID   <- mread =<< findAttr (QName "occupyingFactionID" Nothing Nothing) r
+    cont   <- mread =<< findAttr (QName "contested"          Nothing Nothing) r
+    ssName <- findAttr (QName "solarSystemName" Nothing Nothing) r
+    ofName <- findAttr (QName "occupyingFactionName" Nothing Nothing) r
+    return (ssID, ssName, ofID, ofName, cont)
+
+-- |Returns a list (solarSystemID, numJumps). Note that there may not be an
+-- entry in the returned list if numJumps = 0.
+mapJumps :: EVEDB -> IO (LowLevelResult [(Integer, Integer)])
+mapJumps = runRequest "map/Jumps" [] cachedUntil $ parseRows readRow
+ where
+  readRow row = do
+    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
+    jumps  <- mread =<< findAttr (QName "shipJumps"       Nothing Nothing) row
+    return (id, jumps)
 
 -- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
 mapKills :: EVEDB -> IO (LowLevelResult [(Integer, Integer, Integer, Integer)])
