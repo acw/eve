@@ -270,10 +270,19 @@ mapFactionalWarfareOccupancyMap = runRequest "map/FacWarSystems" []
 mapJumps :: IO LowLevelResult
 mapJumps = runRequest "map/Jumps" []
 
-mapKills :: IO LowLevelResult
-mapKills = runRequest "map/Kills" []
-
 -}
+
+-- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
+mapKills :: EVEDB -> IO (LowLevelResult [(Integer, Integer, Integer, Integer)])
+mapKills = runRequest "map/Kills" [] cachedUntil $ parseRows readRow
+ where
+  readRow :: Element -> Maybe (Integer, Integer, Integer, Integer)
+  readRow row = do
+    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
+    shipKs <- mread =<< findAttr (QName "shipKills"       Nothing Nothing) row
+    facKs  <- mread =<< findAttr (QName "factionKills"    Nothing Nothing) row
+    podKs  <- mread =<< findAttr (QName "podKills"        Nothing Nothing) row
+    return (id, shipKs, facKs, podKs)
 
 data OwnerInfo = AllianceID Integer
                | CorporationID Integer
@@ -288,12 +297,8 @@ data SolarSystem = SolarSystem {
  deriving (Show, Eq)
 
 mapSovereignty :: EVEDB -> IO (LowLevelResult [SolarSystem])
-mapSovereignty = runRequest "map/Sovereignty" [] getCachedUntil pullResult
+mapSovereignty = runRequest "map/Sovereignty" [] cachedUntil $ parseRows readRow
  where
-  pullResult xml =
-    maybe (Left $ EVEParseError xml) Right $ sequence $ map readRow rows
-   where rows = findElements (QName "row" Nothing Nothing) xml
-  --
   readRow :: Element -> Maybe SolarSystem
   readRow row = do
     id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
@@ -308,15 +313,15 @@ mapSovereignty = runRequest "map/Sovereignty" [] getCachedUntil pullResult
     return $ SolarSystem id name list3
 
 serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
-serverStatus = runRequest "server/ServerStatus" [] getCachedUntil pullResult
+serverStatus = runRequest "server/ServerStatus" [] cachedUntil pullResult
  where
   pullResult xml = fromMaybe (Left $ EVEParseError xml) $ do
     open    <- mread =<< getElementStringContent "serverOpen" xml
     players <- mread =<< getElementStringContent "onlinePlayers" xml
     return $ Right (open, players)
 
-getCachedUntil :: Element -> UTCTime
-getCachedUntil xml = fromMaybe zeroHour $ do
+cachedUntil :: Element -> UTCTime
+cachedUntil xml = fromMaybe zeroHour $ do
   str <- getElementStringContent "cachedUntil" xml
   parseTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" str
 
@@ -326,6 +331,9 @@ zeroHour = UTCTime (toEnum 0) (toEnum 0)
 mread :: Read a => String -> Maybe a
 mread = fmap fst . listToMaybe . reads
 
+parseRows :: (Element -> Maybe a) -> Element -> LowLevelResult [a]
+parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows
+ where rows = findElements (QName "row" Nothing Nothing) xml
 
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
