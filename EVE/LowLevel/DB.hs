@@ -144,7 +144,7 @@ lookupCachedItem :: String -> String
 lookupCachedItem req = intercalate " " [
    "SELECT result"
   ,"FROM Cache"
-  ,"WHERE request = '"++req++"' AND expireTime > date('now')"
+  ,"WHERE request = '"++req++"' AND expireTime > datetime('now')"
   ,"ORDER BY expireTime DESC"
   ]
 

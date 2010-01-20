@@ -356,11 +356,7 @@ runRequest procedure args getExpireTime finishProcessing db =
           Just xml        -> do
             let expireTime = getExpireTime xml
                 result     = finishProcessing xml
-            myTZ <- getCurrentTimeZone
-            let diffMinutes     = fromIntegral $ timeZoneMinutes myTZ
-                diffSeconds     = fromIntegral $ 60 * diffMinutes
-                expireTimeLocal = addUTCTime diffSeconds expireTime
-            addCachedResponse db reqHash body expireTimeLocal
+            addCachedResponse db reqHash body expireTime
             return result
   --
   Just uri = parseURI $ "http://api.eve-online.com/" ++ procedure ++ ".xml.aspx"
