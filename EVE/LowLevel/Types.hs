@@ -2,6 +2,7 @@ module EVE.LowLevel.Types
  where
 
 import Data.Char
+import Text.XML.Light
 
 -----------------------------------------------------------------------------
 -- Data types / classes for API keys
