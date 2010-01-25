@@ -68,41 +68,10 @@ import Network.Stream
 import Network.URI
 import System.Locale
 import Text.XML.Light
+import Text.XML.Light.Helpers
 
 import EVE.LowLevel.DB
-
------------------------------------------------------------------------------
--- Data types / classes for API keys
---
-
-data LimitedAPIKey = LAPIK { limUserID  :: String, limAPIKey  :: String }
-data FullAPIKey    = FAPIK { fullUserID :: String, fullAPIKey :: String }
-
-class APIKey k where
-  keyToArgs :: k -> [(String, String)]
-
-instance APIKey LimitedAPIKey where
-  keyToArgs (LAPIK x y) = [("userID", x), ("apiKey", y)]
-
-instance APIKey FullAPIKey where
-  keyToArgs (FAPIK x y) = [("userID", x), ("apiKey", y)]
-
------------------------------------------------------------------------------
--- Errors and low-level types
---
-
-data LowLevelError = ConnectionReset
-                   | ConnectionClosed
-                   | HTTPParseError String
-                   | XMLParseError String
-                   | EVEParseError Element
-                   | UnknownError String
- deriving (Show)
-
-type    LowLevelResult a = Either LowLevelError a
-newtype CharacterID      = CID String
-newtype ItemID           = IID String
-newtype RefID            = RID String
+import EVE.LowLevel.Types
 
 {-
 -----------------------------------------------------------------------------
@@ -261,10 +230,50 @@ eveNameToID names = runRequest "eve/CharacterID" [("names",names')]
 eveRefTypesList :: IO LowLevelResult
 eveRefTypesList = runRequest "eve/RefTypes" []
 
-eveSkillTree :: IO LowLevelResult
-eveSkillTree = runRequest "eve/SkillTree" []
-
 -}
+
+eveSkillTree :: EVEDB -> IO (LowLevelResult ([SkillGroup], [Skill]))
+eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
+ where
+  parseResults :: Element -> LowLevelResult ([SkillGroup], [Skill])
+  parseResults xml = maybe (Left $ EVEParseError xml) Right $ do
+    rows <- findElementWithAttName "skillGroups" xml
+    foldChildren "row" rows ([],[]) $ \ (groups,skills) grow -> do
+      name <- findAttr (unqual "groupName") grow
+      gid  <- mread =<< findAttr (unqual "groupID") grow
+      let newGroup = SkillGroup name gid
+      foldChildren "rowset" grow (newGroup:groups, skills) $ \ acc srows ->
+        foldChildren "row" srows acc $ \ (groups', skills') srow -> do
+          sname <-           findAttr (unqual "typeName") srow
+          tid   <- mread =<< findAttr (unqual "typeID") srow
+          group <- mread =<< findAttr (unqual "groupID") srow
+          desc  <-           getChildData "description" srow
+          rank  <- mread =<< getChildData "rank" srow
+          pri   <- mread =<< getElementData "primaryAttribute" srow
+          sec   <- mread =<< getElementData "secondaryAttribute" srow
+          unless (group == gid) $ fail "group is not equal to id!"
+          rreqs <- findChildWithAttName "requiredSkills" srow
+          reqs  <- mapChildren "row" rreqs $ \ req -> do
+                     reqtid <- mread =<< findAttr (unqual "typeID") req
+                     reqsl  <- mread =<< findAttr (unqual "skillLevel") req
+                     return (SkillLevel reqtid reqsl)
+          rbons <- findChildWithAttName "skillBonusCollection" srow
+          bons  <- mapChildren "row" rbons $ \ bon -> do
+                     btype <- findAttr (unqual "bonusType") bon
+                     bval  <- findAttr (unqual "bonusValue") bon
+                     return (btype, bval)
+          let skill = Skill {
+                        skillName         = sname
+                      , skillGroup        = group
+                      , skillID           = tid
+                      , skillDescription  = desc
+                      , skillRank         = rank
+                      , skillPrimary      = pri
+                      , skillSecondary    = sec
+                      , skillRequirements = reqs
+                      , skillBonuses      = bons
+                      }
+          return (groups', skill : skills')
 
 mapFactionalWarfareOccupancyMap
   :: EVEDB -> IO (LowLevelResult [(Integer, String, Integer, String, Bool)])
@@ -272,11 +281,11 @@ mapFactionalWarfareOccupancyMap =
   runRequest "map/FacWarSystems" [] cachedUntil $ parseRows readRow
  where
   readRow r = do
-    ssID   <- mread =<< findAttr (QName "solarSystemID"      Nothing Nothing) r
-    ofID   <- mread =<< findAttr (QName "occupyingFactionID" Nothing Nothing) r
-    cont   <- mread =<< findAttr (QName "contested"          Nothing Nothing) r
-    ssName <- findAttr (QName "solarSystemName" Nothing Nothing) r
-    ofName <- findAttr (QName "occupyingFactionName" Nothing Nothing) r
+    ssID   <- mread =<< findAttr (unqual "solarSystemID")      r
+    ofID   <- mread =<< findAttr (unqual "occupyingFactionID") r
+    cont   <- mread =<< findAttr (unqual "contested")          r
+    ssName <-           findAttr (unqual "solarSystemName") r
+    ofName <-           findAttr (unqual "occupyingFactionName") r
     return (ssID, ssName, ofID, ofName, cont)
 
 -- |Returns a list (solarSystemID, numJumps). Note that there may not be an
@@ -285,8 +294,8 @@ mapJumps :: EVEDB -> IO (LowLevelResult [(Integer, Integer)])
 mapJumps = runRequest "map/Jumps" [] cachedUntil $ parseRows readRow
  where
   readRow row = do
-    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
-    jumps  <- mread =<< findAttr (QName "shipJumps"       Nothing Nothing) row
+    id     <- mread =<< findAttr (unqual "solarSystemID") row
+    jumps  <- mread =<< findAttr (unqual "shipJumps") row
     return (id, jumps)
 
 -- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
@@ -295,34 +304,22 @@ mapKills = runRequest "map/Kills" [] cachedUntil $ parseRows readRow
  where
   readRow :: Element -> Maybe (Integer, Integer, Integer, Integer)
   readRow row = do
-    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
-    shipKs <- mread =<< findAttr (QName "shipKills"       Nothing Nothing) row
-    facKs  <- mread =<< findAttr (QName "factionKills"    Nothing Nothing) row
-    podKs  <- mread =<< findAttr (QName "podKills"        Nothing Nothing) row
+    id     <- mread =<< findAttr (unqual "solarSystemID") row
+    shipKs <- mread =<< findAttr (unqual "shipKills")     row
+    facKs  <- mread =<< findAttr (unqual "factionKills")  row
+    podKs  <- mread =<< findAttr (unqual "podKills")      row
     return (id, shipKs, facKs, podKs)
-
-data OwnerInfo = AllianceID Integer
-               | CorporationID Integer
-               | FactionID Integer
- deriving (Show, Eq)
-
-data SolarSystem = SolarSystem {
-       solarSystemID         :: Integer
-     , solarSystemName       :: String
-     , solarSystemOwner      :: [OwnerInfo]
-     }
- deriving (Show, Eq)
 
 mapSovereignty :: EVEDB -> IO (LowLevelResult [SolarSystem])
 mapSovereignty = runRequest "map/Sovereignty" [] cachedUntil $ parseRows readRow
  where
   readRow :: Element -> Maybe SolarSystem
   readRow row = do
-    id     <- mread =<< findAttr (QName "solarSystemID"   Nothing Nothing) row
-    name   <-           findAttr (QName "solarSystemName" Nothing Nothing) row
-    aliID  <- mread =<< findAttr (QName "allianceID"      Nothing Nothing) row
-    corID  <- mread =<< findAttr (QName "corporationID"   Nothing Nothing) row
-    facID  <- mread =<< findAttr (QName "factionID"       Nothing Nothing) row
+    id     <- mread =<< findAttr (unqual "solarSystemID")   row
+    name   <-           findAttr (unqual "solarSystemName") row
+    aliID  <- mread =<< findAttr (unqual "allianceID")      row
+    corID  <- mread =<< findAttr (unqual "corporationID")   row
+    facID  <- mread =<< findAttr (unqual "factionID")       row
     let list0 = []
         list1 = if aliID == 0 then list0 else (AllianceID aliID : list0)
         list2 = if corID == 0 then list1 else (CorporationID corID : list1)
@@ -350,7 +347,7 @@ mread = fmap fst . listToMaybe . reads
 
 parseRows :: (Element -> Maybe a) -> Element -> LowLevelResult [a]
 parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows
- where rows = findElements (QName "row" Nothing Nothing) xml
+ where rows = findElements (unqual "row") xml
 
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
@@ -421,5 +418,5 @@ runRequest procedure args getExpireTime finishProcessing db =
 
 getElementStringContent :: String -> Element -> Maybe String
 getElementStringContent name xml = do
-  elem <- findElement (QName name Nothing Nothing) xml
+  elem <- findElement (unqual name) xml
   return $ strContent elem
