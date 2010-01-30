@@ -262,17 +262,18 @@ eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
                      btype <- findAttr (unqual "bonusType") bon
                      bval  <- findAttr (unqual "bonusValue") bon
                      return (btype, bval)
-          let skill = Skill {
-                        skillName         = sname
-                      , skillGroup        = group
-                      , skillID           = tid
-                      , skillDescription  = desc
-                      , skillRank         = rank
-                      , skillPrimary      = pri
-                      , skillSecondary    = sec
-                      , skillRequirements = reqs
-                      , skillBonuses      = bons
-                      }
+          let (reqs',bons') = parseBonuses bons
+              skill         = Skill {
+                                skillName         = sname
+                              , skillGroup        = group
+                              , skillID           = tid
+                              , skillDescription  = desc
+                              , skillRank         = rank
+                              , skillPrimary      = pri
+                              , skillSecondary    = sec
+                              , skillRequirements = reqs ++ reqs'
+                              , skillBonuses      = bons'
+                              }
           return (groups', skill : skills')
 
 mapFactionalWarfareOccupancyMap
