@@ -57,6 +57,7 @@ module EVE.LowLevel.API
 -}
  where
 
+import Control.Applicative
 import Control.Monad
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import Data.Digest.Pure.SHA
@@ -175,7 +176,7 @@ corpMemberTracking :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMemberTracking = standardRequest "corp/MemberTracking"
 
 corpPOSDetails :: FullAPIKey -> CharacterID -> ItemID -> IO LowLevelResult
-corpPOSDetails k (CID cid) (IID iid) = runRequest "corp/StarbaseDetail" xs
+corpPOSDetails k (CharID cid) (IID iid) = runRequest "corp/StarbaseDetail" xs
  where
   xs      = [("version","2")] ++ keyToArgs k ++ details
   details = [("characterID", cid), ("itemID", iid)]
@@ -216,16 +217,45 @@ eveErrorList = runRequest "eve/ErrorList" []
 eveFactionalWarfareStats :: IO LowLevelResult
 eveFactionalWarfareStats = runRequest "eve/FacWarStats" []
 
-eveFactionalWarfareTop100 :: IO LowLevelResult
-eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" []
-
 -}
+
+eveFactionalWarfareTop100 :: EVEDB -> IO (LowLevelResult KillStats)
+eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] cachedUntil parse
+ where
+  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+    chs       <- findElement (unqual "characters")   xml
+    cos       <- findElement (unqual "corporations") xml
+    fas       <- findElement (unqual "factions")     xml
+    charStats <- processStats "characterID"   "characterName"   CharID chs
+    corpStats <- processStats "corporationID" "corporationName" CorpID cos
+    facStats  <- processStats "factionID"     "factionName"     FacID  fas
+    return $ KillStats charStats corpStats facStats
+  processStats i n b xml = do
+    kyest  <- findChildWithAttName "KillsYesterday"         xml
+    kweek  <- findChildWithAttName "KillsLastWeek"          xml
+    ktot   <- findChildWithAttName "KillsTotal"             xml
+    vyest  <- findChildWithAttName "VictoryPointsYesterday" xml
+    vweek  <- findChildWithAttName "VictoryPointsLastWeek"  xml
+    vtot   <- findChildWithAttName "VictoryPointsTotal"     xml
+    kyest' <- toList i n "kills"         b kyest
+    kweek' <- toList i n "kills"         b kweek
+    ktot'  <- toList i n "kills"         b ktot
+    vyest' <- toList i n "victoryPoints" b vyest
+    vweek' <- toList i n "victoryPoints" b vweek
+    vtot'  <- toList i n "victoryPoints" b vtot
+    return $ KillList kyest' kweek' ktot' vyest' vweek' vtot'
+  toList :: String -> String -> String -> (Integer -> a) -> Element -> Maybe [(a, String, Integer)]
+  toList idAtt nameAtt valAtt builder xml = mapChildren "row" xml $ \ row -> do
+    id    <- builder <$> (mread =<< findAttr (unqual idAtt)   row)
+    name  <-                        findAttr (unqual nameAtt) row
+    val   <-              mread =<< findAttr (unqual valAtt)  row
+    return (id, name, val)
 
 eveIDToName :: [CharacterID] -> EVEDB ->
                IO (LowLevelResult [(String,CharacterID)])
 eveIDToName ids =
   runRequest "eve/CharacterName" [("Ids",ids')] cachedUntil readNameIDs
- where ids' = intercalate "," $ map (\ (CID x) -> show x) ids
+ where ids' = intercalate "," $ map (\ (CharID x) -> show x) ids
 
 eveNameToID :: [String] -> EVEDB -> 
                IO (LowLevelResult [(String,CharacterID)])
@@ -237,7 +267,7 @@ readNameIDs :: Element -> LowLevelResult [(String,CharacterID)]
 readNameIDs = parseRows $ \ r -> do
   name <-           findAttr (unqual "name")        r
   cid  <- mread =<< findAttr (unqual "characterID") r
-  return (name, CID cid)
+  return (name, CharID cid)
 
 eveRefTypesList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
 eveRefTypesList = runRequest "eve/RefTypes" [] cachedUntil $ parseRows readRow
@@ -392,7 +422,7 @@ extendedRequest :: APIKey k =>
                    (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
                    EVEDB -> k -> CharacterID ->
                    IO (LowLevelResult a)
-extendedRequest extras proc getExp finish db key (CID cid) =
+extendedRequest extras proc getExp finish db key (CharID cid) =
   runRequest proc args getExp finish db
  where args = keyToArgs key ++ extras ++ [("characterID", show cid)]
 

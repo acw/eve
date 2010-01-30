@@ -35,7 +35,9 @@ data LowLevelError = ConnectionReset
  deriving (Show)
 
 type    LowLevelResult a = Either LowLevelError a
-newtype CharacterID      = CID Integer
+newtype CharacterID      = CharID Integer deriving (Show)
+newtype CorporationID    = CorpID Integer deriving (Show)
+newtype FactionID        = FacID Integer  deriving (Show)
 newtype ItemID           = IID String
 newtype RefID            = RID String
 
@@ -315,3 +317,23 @@ data SolarSystem = SolarSystem {
  deriving (Show, Eq)
 
 
+-----------------------------------------------------------------------------
+-- Kill Statistics
+--
+
+data KillStats = KillStats {
+    ksCharStats :: KillList CharacterID
+  , ksCorpStats :: KillList CorporationID
+  , ksFacStats  :: KillList FactionID
+  }
+ deriving (Show)
+
+data Show a => KillList a = KillList {
+    klKillsYesterday         :: [(a, String, Integer)]
+  , klKillsLastWeek          :: [(a, String, Integer)]
+  , klKillsTotal             :: [(a, String, Integer)]
+  , klVictoryPointsYesterday :: [(a, String, Integer)]
+  , klVictoryPointsLastWeek  :: [(a, String, Integer)]
+  , klVictoryPointsTotal     :: [(a, String, Integer)]
+  }
+ deriving (Show)
