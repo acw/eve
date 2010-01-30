@@ -227,10 +227,15 @@ eveNameToID :: [String] -> IO LowLevelResult
 eveNameToID names = runRequest "eve/CharacterID" [("names",names')]
  where names' = intercalate "," names
 
-eveRefTypesList :: IO LowLevelResult
-eveRefTypesList = runRequest "eve/RefTypes" []
-
 -}
+
+eveRefTypesList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
+eveRefTypesList = runRequest "eve/RefTypes" [] cachedUntil $ parseRows readRow
+ where
+  readRow r = do
+    refid   <- mread =<< findAttr (unqual "refTypeID")   r
+    refname <-           findAttr (unqual "refTypeName") r
+    return (refid, refname)
 
 eveSkillTree :: EVEDB -> IO (LowLevelResult ([SkillGroup], [Skill]))
 eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
