@@ -35,7 +35,7 @@ data LowLevelError = ConnectionReset
  deriving (Show)
 
 type    LowLevelResult a = Either LowLevelError a
-newtype CharacterID      = CID String
+newtype CharacterID      = CID Integer
 newtype ItemID           = IID String
 newtype RefID            = RID String
 

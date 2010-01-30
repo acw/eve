@@ -219,15 +219,25 @@ eveFactionalWarfareStats = runRequest "eve/FacWarStats" []
 eveFactionalWarfareTop100 :: IO LowLevelResult
 eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" []
 
-eveIDToName :: [CharacterID] -> IO LowLevelResult
-eveIDToName ids = runRequest "eve/CharacterName" [("Ids",ids')]
- where ids' = intercalate "," $ map (\ (CID x) -> x) ids
-
-eveNameToID :: [String] -> IO LowLevelResult
-eveNameToID names = runRequest "eve/CharacterID" [("names",names')]
- where names' = intercalate "," names
-
 -}
+
+eveIDToName :: [CharacterID] -> EVEDB ->
+               IO (LowLevelResult [(String,CharacterID)])
+eveIDToName ids =
+  runRequest "eve/CharacterName" [("Ids",ids')] cachedUntil readNameIDs
+ where ids' = intercalate "," $ map (\ (CID x) -> show x) ids
+
+eveNameToID :: [String] -> EVEDB -> 
+               IO (LowLevelResult [(String,CharacterID)])
+eveNameToID names =
+  runRequest "eve/CharacterID" [("names",names')] cachedUntil readNameIDs
+ where names'    = intercalate "," names
+
+readNameIDs :: Element -> LowLevelResult [(String,CharacterID)]
+readNameIDs = parseRows $ \ r -> do
+  name <-           findAttr (unqual "name")        r
+  cid  <- mread =<< findAttr (unqual "characterID") r
+  return (name, CID cid)
 
 eveRefTypesList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
 eveRefTypesList = runRequest "eve/RefTypes" [] cachedUntil $ parseRows readRow
@@ -384,7 +394,7 @@ extendedRequest :: APIKey k =>
                    IO (LowLevelResult a)
 extendedRequest extras proc getExp finish db key (CID cid) =
   runRequest proc args getExp finish db
- where args = keyToArgs key ++ extras ++ [("characterID", cid)]
+ where args = keyToArgs key ++ extras ++ [("characterID", show cid)]
 
 
 runRequest :: String -> [(String, String)] ->
