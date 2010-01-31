@@ -35,11 +35,14 @@ data LowLevelError = ConnectionReset
  deriving (Show)
 
 type    LowLevelResult a = Either LowLevelError a
-newtype CharacterID      = CharID Integer deriving (Show)
-newtype CorporationID    = CorpID Integer deriving (Show)
-newtype FactionID        = FacID Integer  deriving (Show)
+newtype CharacterID      = CharID Integer deriving (Show,Eq)
+newtype CorporationID    = CorpID Integer deriving (Show,Eq)
+newtype FactionID        = FacID Integer  deriving (Show,Ord,Eq)
 newtype ItemID           = IID String
 newtype RefID            = RID String
+
+instance Read FactionID where
+  readsPrec d s = map (\ (a,b) -> (FacID a,b)) $ readsPrec d s
 
 -----------------------------------------------------------------------------
 -- Skills and such
@@ -337,3 +340,29 @@ data Show a => KillList a = KillList {
   , klVictoryPointsTotal     :: [(a, String, Integer)]
   }
  deriving (Show)
+
+data KillTotals = KillTotals {
+    ktKillsYesterday         :: Integer
+  , ktKillsLastWeek          :: Integer
+  , ktKillsTotal             :: Integer
+  , ktVictoryPointsYesterday :: Integer
+  , ktVictoryPointsLastWeek  :: Integer
+  , ktVictoryPointsTotal     :: Integer
+  }
+ deriving (Show)
+
+
+-----------------------------------------------------------------------------
+-- Faction Statistics
+--
+
+data FactionStats = FactionStats {
+    facID                :: FactionID
+  , facName              :: String
+  , facPilots            :: Integer
+  , facSystemsControlled :: Integer
+  , facKillList          :: KillTotals
+  , facAtWarWith         :: [(FactionID, String)]
+  }
+ deriving (Show)
+

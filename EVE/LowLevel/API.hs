@@ -63,6 +63,7 @@ import qualified Data.ByteString.Lazy.Char8 as BSC
 import Data.Digest.Pure.SHA
 import Data.List
 import Data.Maybe
+import qualified Data.Map as Map
 import Data.Time
 import Network.HTTP
 import Network.Stream
@@ -214,10 +215,42 @@ eveConquerableStationList = runRequest "eve/ConquerableStationList" []
 eveErrorList :: IO LowLevelResult
 eveErrorList = runRequest "eve/ErrorList" []
 
-eveFactionalWarfareStats :: IO LowLevelResult
-eveFactionalWarfareStats = runRequest "eve/FacWarStats" []
-
 -}
+
+eveFactionalWarfareStats :: EVEDB ->
+                            IO (LowLevelResult (KillTotals, [FactionStats]))
+eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] cachedUntil parse
+ where
+  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+    kyest <-  mread =<< getElementData "killsYesterday"         xml
+    kweek <-  mread =<< getElementData "killsLastWeek"          xml
+    ktot  <-  mread =<< getElementData "killsTotal"             xml
+    vyest <-  mread =<< getElementData "victoryPointsYesterday" xml
+    vweek <-  mread =<< getElementData "victoryPointsLastWeek"  xml
+    vtot  <-  mread =<< getElementData "victoryPointsTotal"     xml
+    facs  <-    findElementWithAttName "factions"               xml
+    facws <-    findElementWithAttName "factionWars"            xml
+    let totals = KillTotals kyest kweek ktot vyest vweek vtot
+    wmap  <- foldChildren "row" facws Map.empty $ \ acc row -> do
+               facid <- mread =<< findAttr (unqual "factionID")   row
+               othid <- mread =<< findAttr (unqual "againstID")   row
+               othn  <-           findAttr (unqual "againstName") row
+               return $ Map.insertWith (++) facid [(othid, othn)] acc
+    stats <- foldChildren "row" facs []         $ \ acc row -> do
+               facID <- mread =<< findAttr (unqual "factionID")              row
+               facn  <-           findAttr (unqual "factionName")            row
+               pils  <- mread =<< findAttr (unqual "pilots")                 row
+               sc    <- mread =<< findAttr (unqual "systemsControlled")      row
+               ky    <- mread =<< findAttr (unqual "killsYesterday")         row
+               kl    <- mread =<< findAttr (unqual "killsLastWeek")          row
+               kt    <- mread =<< findAttr (unqual "killsTotal")             row
+               vy    <- mread =<< findAttr (unqual "victoryPointsYesterday") row
+               vl    <- mread =<< findAttr (unqual "victoryPointsLastWeek")  row
+               vt    <- mread =<< findAttr (unqual "victoryPointsTotal")     row
+               enms  <- Map.lookup facID wmap
+               let kills = KillTotals ky kl kt vy vl vt
+               return $ FactionStats facID facn pils sc kills enms : acc
+    return (totals, stats)
 
 eveFactionalWarfareTop100 :: EVEDB -> IO (LowLevelResult KillStats)
 eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] cachedUntil parse
