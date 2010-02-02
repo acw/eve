@@ -203,19 +203,84 @@ corpWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
 corpWalletTransactions = 
   walkableRequest "corp/WalletTransactions" "beforeTransID"
 
-eveAllianceList :: IO LowLevelResult
-eveAllianceList = runRequest "eve/AllianceList" []
-
-eveCertificateTree :: IO LowLevelResult
-eveCertificateTree = runRequest "eve/CertificateTree" []
-
-eveConquerableStationList :: IO LowLevelResult
-eveConquerableStationList = runRequest "eve/ConquerableStationList" []
-
-eveErrorList :: IO LowLevelResult
-eveErrorList = runRequest "eve/ErrorList" []
-
 -}
+
+eveAllianceList :: EVEDB -> IO (LowLevelResult [Alliance])
+eveAllianceList = runRequest "eve/AllianceList" [] cachedUntil parse
+ where
+  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+    rows <- findElementWithAttName "alliances" xml
+    mapChildren "row" rows $ \ r -> do
+      name  <-                           findAttr (unqual "name")           r
+      sname <-                           findAttr (unqual "shortName")      r
+      allID <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")     r)
+      exeID <- CorpID <$>     (mread =<< findAttr (unqual "executorCorpID") r)
+      cnt   <-                 mread =<< findAttr (unqual "memberCount")    r
+      start <-                 tread =<< findAttr (unqual "startDate")      r
+      mset  <- findChildWithAttName "memberCorporations" r
+      mems  <- mapChildren "row" mset $ \ mem -> do
+                 c <- mread =<< findAttr (unqual "corporationID") mem
+                 d <- tread =<< findAttr (unqual "startDate")     mem
+                 return (CorpID c, d)
+      return (Alliance allID name sname exeID cnt start mems)
+
+eveCertificateTree :: EVEDB -> IO (LowLevelResult ([CertificateCategory],
+                                                   [CertificateClass],
+                                                   [Certificate]))
+eveCertificateTree = runRequest "eve/CertificateTree" [] cachedUntil parse
+ where
+  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+    rows <- findElementWithAttName "categories" xml
+    foldChildren "row" rows ([],[],[]) $ \ (cats, classes, certs) c -> do
+      catID <- CCatID <$> (mread =<< findAttr (unqual "categoryID")   c)
+      catNm <-                       findAttr (unqual "categoryName") c
+      cset  <-                       findChildWithAttName "classes"   c
+      let newAcc = (CCat catID catNm : cats, classes, certs)
+      foldChildren "row" cset newAcc $ \ (cats2, classes2, certs2) l -> do
+        clID   <- mread =<< findAttr (unqual "classID")   l
+        clName <-           findAttr (unqual "className") l
+        ceset  <- findChildWithAttName "certificates" l
+        let newAcc' = (cats, CClass (CClassID clID) clName : classes2, certs2)
+        foldChildren "row" ceset newAcc' $ \ (cats3, classes3, certs3) x -> do
+          ceID    <- mread =<< findAttr (unqual "certificateID") x
+          ceGrade <- mread =<< findAttr (unqual "grade")         x
+          ceCorp  <- mread =<< findAttr (unqual "corporationID") x
+          ceDesc  <-           findAttr (unqual "description")   x
+          sreqs   <- case findChildWithAttName "requiredSkills" x of
+                       Nothing   -> Just []
+                       Just sset -> fmap (map SkillReq) $
+                         mapChildren "row" sset $ \ r -> do
+                           sid <- mread =<< findAttr (unqual "typeID") r
+                           slv <- mread =<< findAttr (unqual "level")  r
+                           return $ SkillLevel (SkillID sid) slv
+          creqs   <- case findChildWithAttName "requiredCertificates" x of
+                       Nothing   -> Just []
+                       Just rset -> fmap (map CertificateReq) $
+                         mapChildren "row" rset $ \ r -> do
+                           cid <- mread =<< findAttr (unqual "certificateID") r
+                           clv <- mread =<< findAttr (unqual "grade")         r
+                           return $ CertLevel (CertID cid) clv
+          let newCert = Certificate (CertID ceID) catID (CClassID clID)
+                                    (CorpID ceCorp) ceDesc ceGrade
+                                    (sreqs ++ creqs)
+          return (cats3, classes3, newCert : certs3)
+
+eveConquerableStationList :: EVEDB -> IO (LowLevelResult [ConquerableStation])
+eveConquerableStationList =
+  runRequest "eve/ConquerableStationList" [] cachedUntil $ parseRows $ \ r -> do
+    sID <- StatID <$> (mread =<< findAttr (unqual "stationID")       r)
+    sNm <-                       findAttr (unqual "stationName")     r
+    sTp <-             mread =<< findAttr (unqual "stationTypeID")   r
+    sSS <- SSID   <$> (mread =<< findAttr (unqual "solarSystemID")   r)
+    cID <- CorpID <$> (mread =<< findAttr (unqual "corporationID")   r)
+    cNm <-                       findAttr (unqual "corporationName") r
+    return (CStat sID sNm sTp sSS cID cNm)
+
+eveErrorList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
+eveErrorList = runRequest "eve/ErrorList" [] cachedUntil $ parseRows $ \ r -> do
+  code <- mread =<< findAttr (unqual "errorCode") r
+  str  <-           findAttr (unqual "errorText") r
+  return (code, str)
 
 eveFactionalWarfareStats :: EVEDB ->
                             IO (LowLevelResult (KillTotals, [FactionStats]))
@@ -319,7 +384,7 @@ eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
     foldChildren "row" rows ([],[]) $ \ (groups,skills) grow -> do
       name <- findAttr (unqual "groupName") grow
       gid  <- mread =<< findAttr (unqual "groupID") grow
-      let newGroup = SkillGroup name gid
+      let newGroup = SkillGroup name (SkillGroupID gid)
       foldChildren "rowset" grow (newGroup:groups, skills) $ \ acc srows ->
         foldChildren "row" srows acc $ \ (groups', skills') srow -> do
           sname <-           findAttr (unqual "typeName") srow
@@ -334,7 +399,7 @@ eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
           reqs  <- mapChildren "row" rreqs $ \ req -> do
                      reqtid <- mread =<< findAttr (unqual "typeID") req
                      reqsl  <- mread =<< findAttr (unqual "skillLevel") req
-                     return (SkillLevel reqtid reqsl)
+                     return (SkillLevel (SkillID reqtid) reqsl)
           rbons <- findChildWithAttName "skillBonusCollection" srow
           bons  <- mapChildren "row" rbons $ \ bon -> do
                      btype <- findAttr (unqual "bonusType") bon
@@ -343,8 +408,8 @@ eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
           let (reqs',bons') = parseBonuses bons
               skill         = Skill {
                                 skillName         = sname
-                              , skillGroup        = group
-                              , skillID           = tid
+                              , skillGroup        = SkillGroupID group
+                              , skillID           = SkillID tid
                               , skillDescription  = desc
                               , skillRank         = rank
                               , skillPrimary      = pri
@@ -394,15 +459,15 @@ mapSovereignty = runRequest "map/Sovereignty" [] cachedUntil $ parseRows readRow
  where
   readRow :: Element -> Maybe SolarSystem
   readRow row = do
-    id     <- mread =<< findAttr (unqual "solarSystemID")   row
+    id     <- SSID       <$> (mread =<< findAttr (unqual "solarSystemID")   row)
     name   <-           findAttr (unqual "solarSystemName") row
-    aliID  <- mread =<< findAttr (unqual "allianceID")      row
-    corID  <- mread =<< findAttr (unqual "corporationID")   row
-    facID  <- mread =<< findAttr (unqual "factionID")       row
+    aliID  <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")      row)
+    corID  <- CorpID     <$> (mread =<< findAttr (unqual "corporationID")   row)
+    facID  <- FacID      <$> (mread =<< findAttr (unqual "factionID")       row)
     let list0 = []
-        list1 = if aliID == 0 then list0 else (AllianceID aliID : list0)
-        list2 = if corID == 0 then list1 else (CorporationID corID : list1)
-        list3 = if facID == 0 then list2 else (FactionID facID : list2)
+        list1 = if aliID == noAll  then list0 else (OwnerAlliance aliID : list0)
+        list2 = if corID == noCorp then list1 else (OwnerCorp     corID : list1)
+        list3 = if facID == noFac  then list2 else (OwnerFaction  facID : list2)
     return $ SolarSystem id name list3
 
 serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
@@ -423,6 +488,9 @@ zeroHour = UTCTime (toEnum 0) (toEnum 0)
 
 mread :: Read a => String -> Maybe a
 mread = fmap fst . listToMaybe . reads
+
+tread :: ParseTime t => String -> Maybe t
+tread = fmap fst . listToMaybe . readsTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
 
 parseRows :: (Element -> Maybe a) -> Element -> LowLevelResult [a]
 parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows

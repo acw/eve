@@ -4,6 +4,8 @@ module EVE.LowLevel.Types
 import Data.Char
 import Data.List
 import Data.Maybe
+import Data.Time.Clock
+import Data.Time.Format
 import Text.XML.Light
 
 -----------------------------------------------------------------------------
@@ -37,20 +39,31 @@ data LowLevelError = ConnectionReset
 type    LowLevelResult a = Either LowLevelError a
 newtype CharacterID      = CharID Integer deriving (Show,Eq)
 newtype CorporationID    = CorpID Integer deriving (Show,Eq)
-newtype FactionID        = FacID Integer  deriving (Show,Ord,Eq)
+newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
+newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
+newtype SolarSystemID    = SSID   Integer deriving (Show,Ord,Eq)
 newtype ItemID           = IID String
 newtype RefID            = RID String
 
 instance Read FactionID where
   readsPrec d s = map (\ (a,b) -> (FacID a,b)) $ readsPrec d s
 
+noCorp :: CorporationID
+noCorp = CorpID 0
+
+noFac :: FactionID
+noFac = FacID 0
+
 -----------------------------------------------------------------------------
 -- Skills and such
 --
 
+newtype SkillID      = SkillID Integer      deriving (Eq,Show,Ord)
+newtype SkillGroupID = SkillGroupID Integer deriving (Eq,Show,Ord)
+
 data SkillGroup = SkillGroup {
                     groupName :: String
-                  , groupID   :: Integer
+                  , groupID   :: SkillGroupID
                   }
  deriving (Show)
 
@@ -71,15 +84,15 @@ instance Read Attribute where
                     _              -> []
 
 data SkillLevel = SkillLevel {
-                    levelSkill :: Integer
+                    levelSkill :: SkillID
                   , levelLevel :: Integer
                   }
  deriving (Show)
 
 data Skill = Skill {
                skillName         :: String
-             , skillGroup        :: Integer
-             , skillID           :: Integer
+             , skillGroup        :: SkillGroupID
+             , skillID           :: SkillID
              , skillDescription  :: String
              , skillRank         :: Integer
              , skillPrimary      :: Attribute
@@ -199,7 +212,7 @@ parseBonuses ls = (mapMaybe getSkill ["4","5","6"], map (uncurry pb) others)
   getSkill x = do
     skill <- lookup ("requiredSkill" ++ x)            reqSkills
     level <- lookup ("requiredSkill" ++ x ++ "Level") reqSkills
-    return $ SkillLevel (read skill) (read level)
+    return $ SkillLevel (SkillID $ read skill) (read level)
 
 pb :: String -> String -> Bonus
 pb "accessDifficultyBonus"               v = AccessDifficulty           $ read v
@@ -304,16 +317,58 @@ pb "willpowerBonus"                      _ = WillpowerBonus
 pb ub                                   uv = UnknownBonus ub uv
 
 -----------------------------------------------------------------------------
+-- Certificates
+--
+
+newtype CertificateID  = CertID   Integer deriving (Eq,Show,Ord)
+newtype CertCategoryID = CCatID   Integer deriving (Eq,Show,Ord)
+newtype CertClassID    = CClassID Integer deriving (Eq,Show,Ord)
+
+data CertReq = SkillReq       SkillLevel
+             | CertificateReq CertLevel
+ deriving (Show)
+
+data CertLevel   = CertLevel {
+                     clCert  :: CertificateID
+                   , clLevel :: Integer
+                   }
+ deriving (Show)
+
+data CertificateCategory = CCat {
+                             ccatID   :: CertCategoryID
+                           , ccatName :: String
+                           }
+ deriving (Show)
+
+data CertificateClass = CClass {
+                          cclassID   :: CertClassID
+                        , cclassName :: String
+                        }
+ deriving (Show)
+
+data Certificate = Certificate {
+                     certID           :: CertificateID
+                   , certCategoryID   :: CertCategoryID
+                   , certClassID      :: CertClassID
+                   , certCorporation  :: CorporationID
+                   , certDescription  :: String
+                   , certGrade        :: Integer
+                   , certRequirements :: [CertReq]
+                   }
+ deriving (Show)
+
+
+-----------------------------------------------------------------------------
 -- Map data
 --
 
-data OwnerInfo = AllianceID Integer
-               | CorporationID Integer
-               | FactionID Integer
+data OwnerInfo = OwnerAlliance AllianceID
+               | OwnerCorp     CorporationID
+               | OwnerFaction  FactionID
  deriving (Show, Eq)
 
 data SolarSystem = SolarSystem {
-       solarSystemID         :: Integer
+       solarSystemID         :: SolarSystemID
      , solarSystemName       :: String
      , solarSystemOwner      :: [OwnerInfo]
      }
@@ -366,3 +421,36 @@ data FactionStats = FactionStats {
   }
  deriving (Show)
 
+-----------------------------------------------------------------------------
+-- Conquerable Station List
+--
+
+data ConquerableStation = CStat {
+    cstatID              :: StationID
+  , cstatName            :: String
+  , cstatTypeID          :: Integer
+  , cstatSolarSystemID   :: SolarSystemID
+  , cstatCorporationID   :: CorporationID
+  , cstatCorporationName :: String
+  }
+ deriving (Show)
+
+-----------------------------------------------------------------------------
+-- Conquerable Station List
+--
+
+newtype AllianceID = AllianceID Integer deriving (Eq,Show,Ord)
+
+noAll :: AllianceID
+noAll = AllianceID 0
+
+data Alliance = Alliance {
+    allID         :: AllianceID
+  , allName       :: String
+  , allShortName  :: String
+  , allExecutor   :: CorporationID
+  , allNumMembers :: Integer
+  , allStart      :: UTCTime
+  , allMembers    :: [(CorporationID, UTCTime)]
+  }
+ deriving (Show)

@@ -111,7 +111,8 @@ lookupCachedOrDo db hash ifHave ifDont = do
     then do res <- execStatement (dbase db) (lookupCachedItem hash)
             case res of
               Left _                     -> ifDont
-              Right [[("result",res):_]] -> return $ ifHave res
+              Right [[("result",res):_]] -> do putStrLn "Using cache!"
+                                               return $ ifHave res
               Right _                    -> ifDont
     else ifDont
 
