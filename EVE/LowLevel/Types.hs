@@ -454,3 +454,9 @@ data Alliance = Alliance {
   , allMembers    :: [(CorporationID, UTCTime)]
   }
  deriving (Show)
+
+-----------------------------------------------------------------------------
+-- Accounts
+--
+
+newtype AccountID = AccID Integer deriving (Eq, Show, Ord)

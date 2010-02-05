@@ -75,7 +75,6 @@ import Text.XML.Light.Helpers
 import EVE.LowLevel.DB
 import EVE.LowLevel.Types
 
-{-
 -----------------------------------------------------------------------------
 -- The many, many API calls
 --
@@ -83,12 +82,25 @@ import EVE.LowLevel.Types
 -- http://wiki.eve-id.net/APIv2_Page_Index#Notes
 -- is a very helpful page
 
-characterList :: APIKey k => k -> IO LowLevelResult
-characterList k = runRequest "account/Characters" (keyToArgs k)
+characterList :: APIKey k => k -> EVEDB ->
+                 IO (LowLevelResult [(String,CharacterID,String,CorporationID)])
+characterList k = 
+ runRequest "account/Characters" (keyToArgs k) $ parseRows $ \ r -> do
+  name <-                       findAttr (unqual "name")            r
+  char <- CharID <$> (mread =<< findAttr (unqual "characterID")     r)
+  cnam <-                       findAttr (unqual "corporationName") r
+  corp <- CorpID <$> (mread =<< findAttr (unqual "corporationID")   r)
+  return (name, char, cnam, corp)
 
-charAccountBalances :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charAccountBalances = standardRequest "char/AccountBalance"
+charAccountBalances :: EVEDB -> FullAPIKey -> CharacterID ->
+                       IO (LowLevelResult [(AccountID, Double)])
+charAccountBalances =
+ standardRequest "char/AccountBalance" $ parseRows $ \ r -> do
+  accountID <- AccID <$> (mread =<< findAttr (unqual "accountID") r)
+  amount    <-            mread =<< findAttr (unqual "balance")   r
+  return (accountID, amount)
 
+{-
 charAssetList :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charAssetList = extendedRequest [("version", "2")] "char/AssetList"
 
@@ -511,7 +523,7 @@ walkableRequest proc name finish db k c ref =
                  Nothing        -> []
                  Just (RID rid) -> [(name, rid)]
 
-standardRequest :: APIKey k => 
+standardRequest :: APIKey k =>
                    String -> (Element -> LowLevelResult a) ->
                    EVEDB -> k -> CharacterID ->
                    IO (LowLevelResult a)
