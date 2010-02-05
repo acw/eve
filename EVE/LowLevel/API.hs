@@ -206,7 +206,7 @@ corpWalletTransactions =
 -}
 
 eveAllianceList :: EVEDB -> IO (LowLevelResult [Alliance])
-eveAllianceList = runRequest "eve/AllianceList" [] cachedUntil parse
+eveAllianceList = runRequest "eve/AllianceList" [] parse
  where
   parse xml = maybe (Left $ EVEParseError xml) Right $ do
     rows <- findElementWithAttName "alliances" xml
@@ -214,7 +214,7 @@ eveAllianceList = runRequest "eve/AllianceList" [] cachedUntil parse
       name  <-                           findAttr (unqual "name")           r
       sname <-                           findAttr (unqual "shortName")      r
       allID <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")     r)
-      exeID <- CorpID <$>     (mread =<< findAttr (unqual "executorCorpID") r)
+      exeID <- CorpID     <$> (mread =<< findAttr (unqual "executorCorpID") r)
       cnt   <-                 mread =<< findAttr (unqual "memberCount")    r
       start <-                 tread =<< findAttr (unqual "startDate")      r
       mset  <- findChildWithAttName "memberCorporations" r
@@ -227,7 +227,7 @@ eveAllianceList = runRequest "eve/AllianceList" [] cachedUntil parse
 eveCertificateTree :: EVEDB -> IO (LowLevelResult ([CertificateCategory],
                                                    [CertificateClass],
                                                    [Certificate]))
-eveCertificateTree = runRequest "eve/CertificateTree" [] cachedUntil parse
+eveCertificateTree = runRequest "eve/CertificateTree" [] parse
  where
   parse xml = maybe (Left $ EVEParseError xml) Right $ do
     rows <- findElementWithAttName "categories" xml
@@ -267,7 +267,7 @@ eveCertificateTree = runRequest "eve/CertificateTree" [] cachedUntil parse
 
 eveConquerableStationList :: EVEDB -> IO (LowLevelResult [ConquerableStation])
 eveConquerableStationList =
-  runRequest "eve/ConquerableStationList" [] cachedUntil $ parseRows $ \ r -> do
+  runRequest "eve/ConquerableStationList" [] $ parseRows $ \ r -> do
     sID <- StatID <$> (mread =<< findAttr (unqual "stationID")       r)
     sNm <-                       findAttr (unqual "stationName")     r
     sTp <-             mread =<< findAttr (unqual "stationTypeID")   r
@@ -277,14 +277,14 @@ eveConquerableStationList =
     return (CStat sID sNm sTp sSS cID cNm)
 
 eveErrorList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
-eveErrorList = runRequest "eve/ErrorList" [] cachedUntil $ parseRows $ \ r -> do
+eveErrorList = runRequest "eve/ErrorList" [] $ parseRows $ \ r -> do
   code <- mread =<< findAttr (unqual "errorCode") r
   str  <-           findAttr (unqual "errorText") r
   return (code, str)
 
 eveFactionalWarfareStats :: EVEDB ->
                             IO (LowLevelResult (KillTotals, [FactionStats]))
-eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] cachedUntil parse
+eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] parse
  where
   parse xml = maybe (Left $ EVEParseError xml) Right $ do
     kyest <-  mread =<< getElementData "killsYesterday"         xml
@@ -318,7 +318,7 @@ eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] cachedUntil parse
     return (totals, stats)
 
 eveFactionalWarfareTop100 :: EVEDB -> IO (LowLevelResult KillStats)
-eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] cachedUntil parse
+eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] parse
  where
   parse xml = maybe (Left $ EVEParseError xml) Right $ do
     chs       <- findElement (unqual "characters")   xml
@@ -352,13 +352,13 @@ eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] cachedUntil parse
 eveIDToName :: [CharacterID] -> EVEDB ->
                IO (LowLevelResult [(String,CharacterID)])
 eveIDToName ids =
-  runRequest "eve/CharacterName" [("Ids",ids')] cachedUntil readNameIDs
+  runRequest "eve/CharacterName" [("Ids",ids')] readNameIDs
  where ids' = intercalate "," $ map (\ (CharID x) -> show x) ids
 
 eveNameToID :: [String] -> EVEDB -> 
                IO (LowLevelResult [(String,CharacterID)])
 eveNameToID names =
-  runRequest "eve/CharacterID" [("names",names')] cachedUntil readNameIDs
+  runRequest "eve/CharacterID" [("names",names')] readNameIDs
  where names'    = intercalate "," names
 
 readNameIDs :: Element -> LowLevelResult [(String,CharacterID)]
@@ -368,7 +368,7 @@ readNameIDs = parseRows $ \ r -> do
   return (name, CharID cid)
 
 eveRefTypesList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
-eveRefTypesList = runRequest "eve/RefTypes" [] cachedUntil $ parseRows readRow
+eveRefTypesList = runRequest "eve/RefTypes" [] $ parseRows readRow
  where
   readRow r = do
     refid   <- mread =<< findAttr (unqual "refTypeID")   r
@@ -376,7 +376,7 @@ eveRefTypesList = runRequest "eve/RefTypes" [] cachedUntil $ parseRows readRow
     return (refid, refname)
 
 eveSkillTree :: EVEDB -> IO (LowLevelResult ([SkillGroup], [Skill]))
-eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
+eveSkillTree = runRequest "eve/SkillTree" [] parseResults
  where
   parseResults :: Element -> LowLevelResult ([SkillGroup], [Skill])
   parseResults xml = maybe (Left $ EVEParseError xml) Right $ do
@@ -422,7 +422,7 @@ eveSkillTree = runRequest "eve/SkillTree" [] cachedUntil parseResults
 mapFactionalWarfareOccupancyMap
   :: EVEDB -> IO (LowLevelResult [(Integer, String, Integer, String, Bool)])
 mapFactionalWarfareOccupancyMap =
-  runRequest "map/FacWarSystems" [] cachedUntil $ parseRows readRow
+  runRequest "map/FacWarSystems" [] $ parseRows readRow
  where
   readRow r = do
     ssID   <- mread =<< findAttr (unqual "solarSystemID")      r
@@ -435,7 +435,7 @@ mapFactionalWarfareOccupancyMap =
 -- |Returns a list (solarSystemID, numJumps). Note that there may not be an
 -- entry in the returned list if numJumps = 0.
 mapJumps :: EVEDB -> IO (LowLevelResult [(Integer, Integer)])
-mapJumps = runRequest "map/Jumps" [] cachedUntil $ parseRows readRow
+mapJumps = runRequest "map/Jumps" [] $ parseRows readRow
  where
   readRow row = do
     id     <- mread =<< findAttr (unqual "solarSystemID") row
@@ -444,7 +444,7 @@ mapJumps = runRequest "map/Jumps" [] cachedUntil $ parseRows readRow
 
 -- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
 mapKills :: EVEDB -> IO (LowLevelResult [(Integer, Integer, Integer, Integer)])
-mapKills = runRequest "map/Kills" [] cachedUntil $ parseRows readRow
+mapKills = runRequest "map/Kills" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe (Integer, Integer, Integer, Integer)
   readRow row = do
@@ -455,7 +455,7 @@ mapKills = runRequest "map/Kills" [] cachedUntil $ parseRows readRow
     return (id, shipKs, facKs, podKs)
 
 mapSovereignty :: EVEDB -> IO (LowLevelResult [SolarSystem])
-mapSovereignty = runRequest "map/Sovereignty" [] cachedUntil $ parseRows readRow
+mapSovereignty = runRequest "map/Sovereignty" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe SolarSystem
   readRow row = do
@@ -471,7 +471,7 @@ mapSovereignty = runRequest "map/Sovereignty" [] cachedUntil $ parseRows readRow
     return $ SolarSystem id name list3
 
 serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
-serverStatus = runRequest "server/ServerStatus" [] cachedUntil pullResult
+serverStatus = runRequest "server/ServerStatus" [] pullResult
  where
   pullResult xml = fromMaybe (Left $ EVEParseError xml) $ do
     open    <- mread =<< getElementStringContent "serverOpen" xml
@@ -501,37 +501,36 @@ parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows
 --
 
 walkableRequest :: APIKey k =>
-                   String -> String -> 
-                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   String -> String ->
+                   (Element -> LowLevelResult a) ->
                    EVEDB -> k -> CharacterID -> Maybe RefID ->
                    IO (LowLevelResult a)
-walkableRequest proc name getExp finish db k c ref =
-  extendedRequest extra proc getExp finish db k c
+walkableRequest proc name finish db k c ref =
+  extendedRequest extra proc finish db k c
  where extra = case ref of
                  Nothing        -> []
                  Just (RID rid) -> [(name, rid)]
 
 standardRequest :: APIKey k => 
-                   String ->
-                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   String -> (Element -> LowLevelResult a) ->
                    EVEDB -> k -> CharacterID ->
                    IO (LowLevelResult a)
 standardRequest = extendedRequest []
 
 extendedRequest :: APIKey k =>
-                   [(String, String)] -> String -> 
-                   (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+                   [(String, String)] -> String ->
+                   (Element -> LowLevelResult a) ->
                    EVEDB -> k -> CharacterID ->
                    IO (LowLevelResult a)
-extendedRequest extras proc getExp finish db key (CharID cid) =
-  runRequest proc args getExp finish db
+extendedRequest extras proc finish db key (CharID cid) =
+  runRequest proc args finish db
  where args = keyToArgs key ++ extras ++ [("characterID", show cid)]
 
 
 runRequest :: String -> [(String, String)] ->
-              (Element -> UTCTime) -> (Element -> LowLevelResult a) ->
+              (Element -> LowLevelResult a) ->
               EVEDB -> IO (LowLevelResult a)
-runRequest procedure args getExpireTime finishProcessing db =
+runRequest procedure args finishProcessing db =
   lookupCachedOrDo db reqHash parseResult runRequest
  where
   parseResult str =
@@ -551,7 +550,7 @@ runRequest procedure args getExpireTime finishProcessing db =
         case parseXMLDoc body of
           Nothing         -> return $ Left $ XMLParseError body
           Just xml        -> do
-            let expireTime = getExpireTime xml
+            let expireTime = cachedUntil xml
                 result     = finishProcessing xml
             addCachedResponse db reqHash body expireTime
             return result
