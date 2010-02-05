@@ -559,7 +559,7 @@ runRequest procedure args finishProcessing db =
   req      = Request uri POST hdrs body
   hdrs     = [Header HdrContentType "application/x-www-form-urlencoded",
               Header HdrContentLength (show $ length body)]
-  body     = intercalate "," $ map (\ (a,b) -> a ++ "=" ++ b) args
+  body     = intercalate "&" $ map (\ (a,b) -> a ++ "=" ++ b) args
   reqHash  = showDigest $ sha512 $ BSC.pack $ show req ++ body
 
 getElementStringContent :: String -> Element -> Maybe String
