@@ -168,10 +168,27 @@ characterSheet = standardRequest "char/CharacterSheet" $ \ x ->
     vl <- mread =<< getChildData "augmentatorValue" el
     return (AttrEnh attr nm vl)
 
-{-
-charFactionalWarfareStats :: APIKey k => k -> CharacterID -> IO LowLevelResult
-charFactionalWarfareStats = standardRequest "char/FacWarStats"
+charFactionalWarfareStats :: APIKey k => 
+                             EVEDB -> k -> CharacterID ->
+                             IO (LowLevelResult (Maybe CharWarfareStats))
+charFactionalWarfareStats = standardRequest "char/FacWarStats" $ \ x ->
+  maybe (Left $ EVEParseError x) Right $ actualData x <|> notInvolved x
+ where
+  actualData x = do
+    fid <- FacID <$> (mread =<< getElementData "factionID"   x)
+    fnm <-            mread =<< getElementData "factionName" x
+    enl <-            tread =<< getElementData "enlisted"    x
+    crn <-            mread =<< getElementData "currentRank" x
+    hrn <-            mread =<< getElementData "highestRank" x
+    kst <- readKillStats x
+    return (Just $ CharWarfareStats fid fnm enl crn hrn kst)
+  notInvolved x = do
+    err  <- findElement (unqual "error") x
+    code <- mread =<< findAttr (unqual "code") err
+    guard (code == 124)
+    return Nothing
 
+{-
 charIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charIndustryJobs = standardRequest "char/IndustryJobs"
 
@@ -223,9 +240,29 @@ corpContainerLog = standardRequest "corp/ContainerLog"
 corporationSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
 corporationSheet = standardRequest "corp/CorporationSheet"
 
-corpFactionalWarfareStats :: APIKey k => k -> CharacterID -> IO LowLevelResult
-corpFactionalWarfareStats = standardRequest "corp/FacWarStats"
+-}
 
+corpFactionalWarfareStats :: APIKey k =>
+                             EVEDB -> k -> CharacterID ->
+                             IO (LowLevelResult (Maybe CorpWarfareStats))
+corpFactionalWarfareStats = standardRequest "corp/FacWarStats" $ \ x ->
+  maybe (Left $ EVEParseError x) Right $ actualData x <|> notInvolved x
+ where
+  actualData x = do
+    fid <- FacID <$> (mread =<< getElementData "factionID"   x)
+    fnm <-            mread =<< getElementData "factionName" x
+    enl <-            tread =<< getElementData "enlisted"    x
+    pil <-            mread =<< getElementData "pilots"      x
+    kst <- readKillStats x
+    return (Just $ CorpWarfareStats fid fnm enl pil kst)
+  notInvolved x = do
+    err  <- findElement (unqual "error") x
+    code <- mread =<< findAttr (unqual "code") err
+    guard (code == 125)
+    return Nothing
+
+
+{-
 corpIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpIndustryJobs = standardRequest "corp/IndustryJobs"
 
@@ -356,20 +393,24 @@ eveErrorList = runRequest "eve/ErrorList" [] $ parseRows $ \ r -> do
   str  <-           findAttr (unqual "errorText") r
   return (code, str)
 
+readKillStats :: Element -> Maybe KillTotals
+readKillStats xml = do
+  kyest <-  mread =<< getElementData "killsYesterday"         xml
+  kweek <-  mread =<< getElementData "killsLastWeek"          xml
+  ktot  <-  mread =<< getElementData "killsTotal"             xml
+  vyest <-  mread =<< getElementData "victoryPointsYesterday" xml
+  vweek <-  mread =<< getElementData "victoryPointsLastWeek"  xml
+  vtot  <-  mread =<< getElementData "victoryPointsTotal"     xml
+  return (KillTotals kyest kweek ktot vyest vweek vtot)
+
 eveFactionalWarfareStats :: EVEDB ->
                             IO (LowLevelResult (KillTotals, [FactionStats]))
 eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] parse
  where
   parse xml = maybe (Left $ EVEParseError xml) Right $ do
-    kyest <-  mread =<< getElementData "killsYesterday"         xml
-    kweek <-  mread =<< getElementData "killsLastWeek"          xml
-    ktot  <-  mread =<< getElementData "killsTotal"             xml
-    vyest <-  mread =<< getElementData "victoryPointsYesterday" xml
-    vweek <-  mread =<< getElementData "victoryPointsLastWeek"  xml
-    vtot  <-  mread =<< getElementData "victoryPointsTotal"     xml
     facs  <-    findElementWithAttName "factions"               xml
     facws <-    findElementWithAttName "factionWars"            xml
-    let totals = KillTotals kyest kweek ktot vyest vweek vtot
+    totals <- readKillStats xml
     wmap  <- foldChildren "row" facws Map.empty $ \ acc row -> do
                facid <- mread =<< findAttr (unqual "factionID")   row
                othid <- mread =<< findAttr (unqual "againstID")   row

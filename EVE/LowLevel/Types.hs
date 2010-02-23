@@ -407,7 +407,7 @@ data KillTotals = KillTotals {
 
 
 -----------------------------------------------------------------------------
--- Faction Statistics
+-- Faction / Character / Corporation Statistics
 --
 
 data FactionStats = FactionStats {
@@ -417,6 +417,26 @@ data FactionStats = FactionStats {
   , facSystemsControlled :: Integer
   , facKillList          :: KillTotals
   , facAtWarWith         :: [(FactionID, String)]
+  }
+ deriving (Show)
+
+
+data CharWarfareStats = CharWarfareStats {
+    charwFactionID        :: FactionID
+  , charwFactionName      :: String
+  , charwEnlisted         :: UTCTime
+  , charwRank             :: Integer
+  , charwHighestRank      :: Integer
+  , charwKillStats        :: KillTotals
+  }
+ deriving (Show)
+
+data CorpWarfareStats = CorpWarfareStats {
+    corpwFactionID        :: FactionID
+  , corpwFactionName      :: String
+  , corpwEnlisted         :: UTCTime
+  , corpwPilots           :: Integer
+  , coprwKillStats        :: KillTotals
   }
  deriving (Show)
 
