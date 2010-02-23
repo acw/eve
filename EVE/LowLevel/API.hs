@@ -100,7 +100,7 @@ charAccountBalances =
   amount    <-            mread =<< findAttr (unqual "balance")   r
   return (accountID, amount)
 
-charAssetList :: EVEDB -> FullAPIKey -> CharacterID -> 
+charAssetList :: EVEDB -> FullAPIKey -> CharacterID ->
                  IO (LowLevelResult [Item])
 charAssetList =
  extendedRequest [("version", "2")] "char/AssetList" $ \ x ->
@@ -130,10 +130,45 @@ parseItem mlid el = do
              return []
   return (Item iid (lid, flg) tid qnt sng sub)
 
-{-
-characterSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
-characterSheet = standardRequest "char/CharacterSheet"
+characterSheet :: APIKey k =>
+                  EVEDB -> k -> CharacterID ->
+                  IO (LowLevelResult Character)
+characterSheet = standardRequest "char/CharacterSheet" $ \ x ->
+ maybe (Left $ EVEParseError x) Right $ do
+  cid <- CharID <$> (mread =<< getElementData "characterID"     x)
+  nm  <-                       getElementData "name"            x
+  rc  <-                       getElementData "race"            x
+  bl  <-                       getElementData "bloodLine"       x
+  gn  <-             mread =<< getElementData "gender"          x
+  cn  <-                       getElementData "corporationName" x
+  ci  <- CorpID <$> (mread =<< getElementData "corporationID"   x)
+  bal <-             mread =<< getElementData "balance"         x
+  int <-             mread =<< getElementData "intelligence"    x
+  mem <-             mread =<< getElementData "memory"          x
+  cha <-             mread =<< getElementData "charisma"        x
+  per <-             mread =<< getElementData "perception"      x
+  wil <-             mread =<< getElementData "willpower"       x
+  let enhs = catMaybes [getEnhancer "intelligenceBonus" Intelligence x
+                       ,getEnhancer "memoryBonus"       Memory       x
+                       ,getEnhancer "charismaBonus"     Charisma     x
+                       ,getEnhancer "perceptionBonus"   Perception   x
+                       ,getEnhancer "willpowerBonus"    Willpower    x]
+  sks <- do base <- findElementWithAttName "skills" x
+            mapChildren "row" base $ \ sk -> do
+              typ <- SkillID <$> (mread =<< findAttr (unqual "typeID")      sk)
+              lev <-              mread =<< findAttr (unqual "level")       sk
+              pnt <-              mread =<< findAttr (unqual "skillpoints") sk
+              return (SkillLevel typ lev, pnt)
+  return (Character cid nm rc bl gn cn ci bal enhs int mem cha per wil sks)
+ where
+  getEnhancer :: String -> Attribute -> Element -> Maybe AttributeEnhancer
+  getEnhancer s attr xml = do
+    el <- findElement (unqual s) xml
+    nm <-           getChildData "augmentatorName" el
+    vl <- mread =<< getChildData "augmentatorValue" el
+    return (AttrEnh attr nm vl)
 
+{-
 charFactionalWarfareStats :: APIKey k => k -> CharacterID -> IO LowLevelResult
 charFactionalWarfareStats = standardRequest "char/FacWarStats"
 

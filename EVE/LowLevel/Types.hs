@@ -37,7 +37,6 @@ data LowLevelError = ConnectionReset
  deriving (Show)
 
 type    LowLevelResult a = Either LowLevelError a
-newtype CharacterID      = CharID Integer deriving (Show,Eq)
 newtype CorporationID    = CorpID Integer deriving (Show,Eq)
 newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
 newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
@@ -589,3 +588,41 @@ fromLocFlag FactoryOperation            = 100
 fromLocFlag (CorpSecurityAccessGroup x) = 114 + x
 fromLocFlag SecondaryStorage            = 122
 
+-----------------------------------------------------------------------------
+-- Character Information
+--
+
+newtype CharacterID      = CharID Integer deriving (Show,Eq)
+data Gender = Male | Female               deriving (Show,Eq)
+
+instance Read Gender where
+  readsPrec d x = case map toLower x of
+                    s | "male"   `isPrefixOf` s -> [(Male,   drop 4 x)]
+                      | "female" `isPrefixOf` s -> [(Female, drop 6 x)]
+                      | otherwise               -> []
+
+data Character = Character {
+    charID                 :: CharacterID
+  , charName               :: String
+  , charRace               :: String
+  , charBloodline          :: String
+  , charGender             :: Gender
+  , charCorporationName    :: String
+  , charCorporationID      :: CorporationID
+  , charBalance            :: Double
+  , charAttributeEnhancers :: [AttributeEnhancer]
+  , charIntelligence       :: Int
+  , charMemory             :: Int
+  , charCharisma           :: Int
+  , charPerception         :: Int
+  , charWillpower          :: Int
+  , charSkills             :: [(SkillLevel, Integer)]
+  }
+ deriving (Show)
+
+data AttributeEnhancer = AttrEnh {
+    attrenAttribute :: Attribute
+  , attrenName      :: String
+  , attrenBonus     :: Integer
+  }
+ deriving (Show)
