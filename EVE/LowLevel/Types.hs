@@ -42,7 +42,7 @@ newtype CorporationID    = CorpID Integer deriving (Show,Eq)
 newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
 newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
 newtype SolarSystemID    = SSID   Integer deriving (Show,Ord,Eq)
-newtype ItemID           = IID String
+newtype LocationID       = LocID  Integer deriving (Show,Ord,Eq)
 newtype RefID            = RID String
 
 instance Read FactionID where
@@ -460,3 +460,132 @@ data Alliance = Alliance {
 --
 
 newtype AccountID = AccID Integer deriving (Eq, Show, Ord)
+
+-----------------------------------------------------------------------------
+-- Item Information
+--
+
+newtype ItemID           = IID Integer deriving (Eq, Show)
+newtype TypeID           = TID Integer deriving (Eq, Show)
+
+data Item = Item {
+    itemID       :: ItemID
+  , itemLocation :: (LocationID, LocationFlag)
+  , itemType     :: TypeID
+  , itemQuantity :: Integer
+  , itemPackaged :: Bool
+  , itemContains :: [Item]
+  }
+ deriving (Show)
+
+data LocationFlag =
+    None
+  | Wallet
+  | Factory
+  | Hanger
+  | Cargo
+  | Briefcase
+  | SkillFlag
+  | Reward
+  | Connected
+  | Disconnected
+  | LowSlot Int
+  | MidSlot Int
+  | HighSlot Int
+  | FixedSlot
+  | Capsule
+  | Pilot
+  | Passenger
+  | BoardingGate
+  | Crew
+  | SkillInTraining
+  | CorpMarket
+  | Locked
+  | Unlocked
+  | OfficeSlot Int
+  | Bonus
+  | DroneBay
+  | Booster
+  | Implant
+  | ShipHanger
+  | ShipOffline
+  | RigSlot Int
+  | FactoryOperation
+  | CorpSecurityAccessGroup Int
+  | SecondaryStorage
+ deriving (Eq, Show)
+
+toLocFlag :: Int -> Maybe LocationFlag
+toLocFlag   0 = Just None
+toLocFlag   1 = Just Wallet
+toLocFlag   2 = Just Factory
+toLocFlag   4 = Just Hanger
+toLocFlag   5 = Just Cargo
+toLocFlag   6 = Just Briefcase
+toLocFlag   7 = Just SkillFlag
+toLocFlag   8 = Just Reward
+toLocFlag   9 = Just Connected
+toLocFlag  10 = Just Disconnected
+toLocFlag  35 = Just FixedSlot
+toLocFlag  56 = Just Capsule
+toLocFlag  57 = Just Pilot
+toLocFlag  58 = Just Passenger
+toLocFlag  59 = Just BoardingGate
+toLocFlag  60 = Just Crew
+toLocFlag  61 = Just SkillInTraining
+toLocFlag  62 = Just CorpMarket
+toLocFlag  63 = Just Locked
+toLocFlag  64 = Just Unlocked
+toLocFlag  86 = Just Bonus
+toLocFlag  87 = Just DroneBay
+toLocFlag  88 = Just Booster
+toLocFlag  89 = Just Implant
+toLocFlag  90 = Just ShipHanger
+toLocFlag  91 = Just ShipOffline
+toLocFlag 100 = Just FactoryOperation
+toLocFlag 122 = Just SecondaryStorage
+toLocFlag   x
+  | (x >= 11)  && (x <= 18)  = Just $ LowSlot                 (x - 10)
+  | (x >= 19)  && (x <= 26)  = Just $ MidSlot                 (x - 18)
+  | (x >= 27)  && (x <= 34)  = Just $ HighSlot                (x - 26)
+  | (x >= 70)  && (x <= 85)  = Just $ OfficeSlot              (x - 69)
+  | (x >= 92)  && (x <= 99)  = Just $ RigSlot                 (x - 91)
+  | (x >= 116) && (x <= 121) = Just $ CorpSecurityAccessGroup (x - 114)
+  | otherwise                = Nothing
+
+fromLocFlag :: LocationFlag -> Int
+fromLocFlag None                        = 0
+fromLocFlag Wallet                      = 1
+fromLocFlag Factory                     = 2
+fromLocFlag Hanger                      = 4
+fromLocFlag Cargo                       = 5
+fromLocFlag Briefcase                   = 6
+fromLocFlag SkillFlag                   = 7
+fromLocFlag Reward                      = 8
+fromLocFlag Connected                   = 9
+fromLocFlag Disconnected                = 10
+fromLocFlag (LowSlot x)                 = 10 + x
+fromLocFlag (MidSlot x)                 = 18 + x
+fromLocFlag (HighSlot x)                = 26 + x
+fromLocFlag FixedSlot                   = 35
+fromLocFlag Capsule                     = 56
+fromLocFlag Pilot                       = 57
+fromLocFlag Passenger                   = 58
+fromLocFlag BoardingGate                = 59
+fromLocFlag Crew                        = 60
+fromLocFlag SkillInTraining             = 61
+fromLocFlag CorpMarket                  = 62
+fromLocFlag Locked                      = 63
+fromLocFlag Unlocked                    = 64
+fromLocFlag (OfficeSlot x)              = 69 + x
+fromLocFlag Bonus                       = 86
+fromLocFlag DroneBay                    = 87
+fromLocFlag Booster                     = 88
+fromLocFlag Implant                     = 89
+fromLocFlag ShipHanger                  = 90
+fromLocFlag ShipOffline                 = 91
+fromLocFlag (RigSlot x)                 = 91 + x
+fromLocFlag FactoryOperation            = 100
+fromLocFlag (CorpSecurityAccessGroup x) = 114 + x
+fromLocFlag SecondaryStorage            = 122
+

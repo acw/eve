@@ -84,7 +84,7 @@ import EVE.LowLevel.Types
 
 characterList :: APIKey k => k -> EVEDB ->
                  IO (LowLevelResult [(String,CharacterID,String,CorporationID)])
-characterList k = 
+characterList k =
  runRequest "account/Characters" (keyToArgs k) $ parseRows $ \ r -> do
   name <-                       findAttr (unqual "name")            r
   char <- CharID <$> (mread =<< findAttr (unqual "characterID")     r)
@@ -100,10 +100,37 @@ charAccountBalances =
   amount    <-            mread =<< findAttr (unqual "balance")   r
   return (accountID, amount)
 
-{-
-charAssetList :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charAssetList = extendedRequest [("version", "2")] "char/AssetList"
+charAssetList :: EVEDB -> FullAPIKey -> CharacterID -> 
+                 IO (LowLevelResult [Item])
+charAssetList =
+ extendedRequest [("version", "2")] "char/AssetList" $ \ x ->
+  maybe (Left $ EVEParseError x) Right $ do
+   rs0 <- findElement (unqual "result") x
+   rs1 <- findChild   (unqual "rowset") rs0
+   foldChildren "row" rs1 [] $ \ acc cur -> do
+     res <- parseItem Nothing cur
+     return (res : acc)
 
+parseItem :: Maybe LocationID -> Element -> Maybe Item
+parseItem mlid el = do
+  iid <- IID       <$> (mread =<< findAttr (unqual "itemID")     el)
+  tid <- TID       <$> (mread =<< findAttr (unqual "typeID")     el)
+  qnt <-                mread =<< findAttr (unqual "quantity")   el
+  flg <- toLocFlag =<< (mread =<< findAttr (unqual "flag")       el)
+  sng <- (== 0)    <$> (mread =<< findAttr (unqual "singleton")  el)
+  lid <- case mlid of
+           Nothing -> LocID <$> (mread =<< findAttr (unqual "locationID") el)
+           Just x  -> return x
+  sub <- case findChild (unqual "rowset") el of
+           Just rs ->
+             foldChildren "row" rs [] $ \ acc cur -> do
+               res <- parseItem (Just lid) cur
+               return (res : acc)
+           Nothing ->
+             return []
+  return (Item iid (lid, flg) tid qnt sng sub)
+
+{-
 characterSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
 characterSheet = standardRequest "char/CharacterSheet"
 
