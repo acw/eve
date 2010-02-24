@@ -42,7 +42,7 @@ newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
 newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
 newtype SolarSystemID    = SSID   Integer deriving (Show,Ord,Eq)
 newtype LocationID       = LocID  Integer deriving (Show,Ord,Eq)
-newtype RefID            = RID String
+newtype RefID            = RID    Integer deriving (Show)
 
 instance Read FactionID where
   readsPrec d s = map (\ (a,b) -> (FacID a,b)) $ readsPrec d s
@@ -646,3 +646,32 @@ data AttributeEnhancer = AttrEnh {
   , attrenBonus     :: Integer
   }
  deriving (Show)
+
+-----------------------------------------------------------------------------
+-- Kill Data
+--
+
+data Kill = Kill {
+    killID           :: RefID
+  , killTime         :: UTCTime
+  , killLocation     :: SolarSystemID
+  , killVictim       :: (CharacterID, String, CorporationID, String, AllianceID)
+  , killDamageTaken  :: Integer
+  , killShipType     :: TypeID
+  , killAttackers    :: [AttackerInfo]
+  , killItemResults  :: [(TypeID, LocationFlag, Integer, Integer)]
+  }
+ deriving (Show)
+
+data AttackerInfo = AttackerInfo {
+    attBase           :: (CharacterID, String,
+                          CorporationID, String,
+                          AllianceID, String)
+  , attSecurityStatus :: Float
+  , attDamageDone     :: Integer
+  , attFinalBlow      :: Bool
+  , attWeapon         :: TypeID
+  , attShip           :: TypeID
+  }
+ deriving (Show)
+

@@ -189,12 +189,59 @@ charFactionalWarfareStats = standardRequest "char/FacWarStats" $ \ x ->
     return Nothing
 
 {-
-charIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charIndustryJobs = standardRequest "char/IndustryJobs"
+ - Skip this one for a bit
+ -
+charIndustryJobs :: FullAPIKey -> CharacterID -> 
+                    IO (LowLevelResult [IndustryJob])
+charIndustryJobs = standardRequest "char/IndustryJobs" $ parseRows $ \ r -> do
+-}
 
-charKillLogs :: FullAPIKey -> CharacterID -> Maybe RefID -> IO LowLevelResult
-charKillLogs = walkableRequest "char/Killlog" "beforeKillID"
+charKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
+                IO (LowLevelResult [Kill])
+charKillLogs = walkableRequest "char/Killlog" "beforeKillID" $ \ xml ->
+ maybe (Left $ EVEParseError xml) Right $ readKillLog xml
 
+readKillLog :: Element -> Maybe [Kill]
+readKillLog xml = do
+  set <- findElementWithAttName "kills" xml
+  mapChildren "row" set $ \ kr -> do
+    vic  <- findChild            (unqual "victim")   kr
+    atts <- findChildWithAttName         "attackers" kr
+    itms <- findChildWithAttName         "items"     kr
+    kid  <- RID        <$> (mread =<< findAttr (unqual "killID")          kr)
+    ktm  <-                 tread =<< findAttr (unqual "killTime")        kr
+    kloc <- SSID       <$> (mread =<< findAttr (unqual "solarSystemID")   kr)
+    --
+    vid  <- CharID     <$> (mread =<< findAttr (unqual "characterID")     vic)
+    vnm  <-                           findAttr (unqual "characterName")   vic
+    vcoi <- CorpID     <$> (mread =<< findAttr (unqual "corporationID")   vic)
+    vcon <-                           findAttr (unqual "corporationName") vic
+    vall <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")      vic)
+    vpnt <-                 mread =<< findAttr (unqual "damageTaken")     vic
+    vshp <- TID        <$> (mread =<< findAttr (unqual "shipTypeID")      vic)
+    att  <- mapChildren "row" atts $ \ ar -> do
+      aid  <- CharID     <$> (mread =<< findAttr (unqual "characterID")     ar)
+      anm  <-                           findAttr (unqual "characterName")   ar
+      acoi <- CorpID     <$> (mread =<< findAttr (unqual "corporationID")   ar)
+      acon <-                           findAttr (unqual "corporationName") ar
+      aall <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")      ar)
+      aaln <-                           findAttr (unqual "allianceName")    ar
+      asec <-                 mread =<< findAttr (unqual "securityStatus")  ar
+      admg <-                 mread =<< findAttr (unqual "damageDone")      ar
+      afnl <- (== 1)     <$> (mread =<< findAttr (unqual "finalBlow")       ar)
+      awep <- TID        <$> (mread =<< findAttr (unqual "weaponTypeID")    ar)
+      ashp <- TID        <$> (mread =<< findAttr (unqual "shipTypeID")      ar)
+      let base = (aid, anm, acoi, acon, aall, aaln)
+      return $ AttackerInfo base asec admg afnl awep ashp
+    itm <- mapChildren "row" itms $ \ ir -> do
+      ityp <- TID        <$> (mread =<< findAttr (unqual "typeID")       ir)
+      iflg <- toLocFlag  =<< (mread =<< findAttr (unqual "flag")         ir)
+      idrp <-                 mread =<< findAttr (unqual "qtyDropped")   ir
+      idst <-                 mread =<< findAttr (unqual "qtyDestroyed") ir
+      return (ityp, iflg, idrp, idst)
+    let victim = (vid, vnm, vcoi, vcon, vall)
+    return $ Kill kid ktm kloc victim vpnt vshp att itm
+{-
 charMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMarketOrders = standardRequest "char/MarketOrders"
 
@@ -262,13 +309,17 @@ corpFactionalWarfareStats = standardRequest "corp/FacWarStats" $ \ x ->
     return Nothing
 
 
-{-
+{- Skil this one for now
 corpIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpIndustryJobs = standardRequest "corp/IndustryJobs"
+-}
 
-corpKillLogs :: FullAPIKey -> CharacterID -> Maybe RefID -> IO LowLevelResult
-corpKillLogs = walkableRequest "corp/KillLog" "beforeKillID"
+corpKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID -> 
+                IO (LowLevelResult [Kill])
+corpKillLogs = walkableRequest "corp/Killlog" "beforeKillID" $ \ xml ->
+ maybe (Left $ EVEParseError xml) Right $ readKillLog xml
 
+{-
 corpMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMarketOrders = standardRequest "corp/MarketOrders"
 
@@ -624,7 +675,7 @@ walkableRequest proc name finish db k c ref =
   extendedRequest extra proc finish db k c
  where extra = case ref of
                  Nothing        -> []
-                 Just (RID rid) -> [(name, rid)]
+                 Just (RID rid) -> [(name, show rid)]
 
 standardRequest :: APIKey k =>
                    String -> (Element -> LowLevelResult a) ->
