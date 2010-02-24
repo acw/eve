@@ -43,6 +43,8 @@ newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
 newtype SolarSystemID    = SSID   Integer deriving (Show,Ord,Eq)
 newtype LocationID       = LocID  Integer deriving (Show,Ord,Eq)
 newtype RefID            = RID    Integer deriving (Show)
+newtype ListID           = ListID Integer deriving (Show)
+newtype MessageID        = MsgID  Integer deriving (Show)
 
 instance Read FactionID where
   readsPrec d s = map (\ (a,b) -> (FacID a,b)) $ readsPrec d s
@@ -673,5 +675,24 @@ data AttackerInfo = AttackerInfo {
   , attWeapon         :: TypeID
   , attShip           :: TypeID
   }
+ deriving (Show)
+
+-----------------------------------------------------------------------------
+-- Mail Messages
+--
+
+data MailMessage = MailMessage {
+    msgID          :: MessageID
+  , msgSender      :: CharacterID
+  , msgDestination :: [MailDestination]
+  , msgSentDate    :: UTCTime
+  , msgTitle       :: String
+  , msgRead        :: Bool
+  }
+ deriving (Show)
+
+data MailDestination = ToCorpOrAlliance CorporationID
+                     | ToCharacter      CharacterID
+                     | ToMailingList    ListID
  deriving (Show)
 

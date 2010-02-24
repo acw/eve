@@ -8,6 +8,8 @@ module EVE.LowLevel.API
        , charFactionalWarfareStats
        , charIndustryJobs
        , charKillLogs
+       , charMailingLists
+       , charMailMessages
        , charMarketOrders
        , charMedals
        , charSkillInTraining
@@ -241,6 +243,37 @@ readKillLog xml = do
       return (ityp, iflg, idrp, idst)
     let victim = (vid, vnm, vcoi, vcon, vall)
     return $ Kill kid ktm kloc victim vpnt vshp att itm
+
+charMailingLists :: EVEDB -> FullAPIKey -> CharacterID ->
+                    IO (LowLevelResult [(ListID, String)])
+charMailingLists = standardRequest "char/mailinglists" $ parseRows $ \ r -> do
+  lid <- ListID <$> (mread =<< findAttr (unqual "listID")      r)
+  nam <-                       findAttr (unqual "displayName") r
+  return (lid, nam)
+
+charMailMessages :: EVEDB -> FullAPIKey -> CharacterID ->
+                    IO (LowLevelResult [MailMessage])
+charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
+  mid <- MsgID  <$> (mread =<< findAttr (unqual "messageID")          r)
+  sid <- CharID <$> (mread =<< findAttr (unqual "senderID")           r)
+  dat <-             tread =<< findAttr (unqual "sentDate")           r
+  tit <-                       findAttr (unqual "title")              r
+  tco <-                       findAttr (unqual "toCorpOrAllianceID") r
+  tli <-                       findAttr (unqual "toListIDs")          r
+  tch <-                       findAttr (unqual "toCharacterIDs")     r
+  rd  <- (== 1) <$> (mread =<< findAttr (unqual "read")               r)
+  dst <- liftM3 (\ a b c -> a ++ b ++ c)
+                (unwindCommas (ToCorpOrAlliance . CorpID) tco)
+                (unwindCommas (ToCharacter      . CharID) tch)
+                (unwindCommas (ToMailingList    . ListID) tli)
+  return (MailMessage mid sid dst dat tit rd)
+ where
+  unwindCommas f "" = return []
+  unwindCommas f xs = do let (start,rest) = break (/= ',') xs
+                         rest' <- unwindCommas f (drop 1 xs)
+                         cur   <- f <$> mread start
+                         return (cur:rest')
+
 {-
 charMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMarketOrders = standardRequest "char/MarketOrders"
