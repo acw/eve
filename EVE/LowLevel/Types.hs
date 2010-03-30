@@ -696,3 +696,31 @@ data MailDestination = ToCorpOrAlliance CorporationID
                      | ToMailingList    ListID
  deriving (Show)
 
+-----------------------------------------------------------------------------
+-- Market Orders
+--
+
+newtype OrderID = OrderID Integer deriving (Eq, Show)
+
+data OrderState = Open
+                | Closed
+                | Expired
+                | Fulfulled
+                | Cancelled
+                | Pending
+                | CharacterDeleted
+
+data Range = Station
+           | SolarSystem
+           | NJumps Int
+           | Region
+
+toOrderState :: Int -> OrderState
+toOrderState 0 = Open
+toOrderState 1 = Closed
+toOrderState 2 = Expired -- I don't get this
+toOrderState 3 = Cancelled
+toOrderState 4 = Pending
+toOrderState 5 = CharacterDeleted
+
+toRange :: Int -> Range 

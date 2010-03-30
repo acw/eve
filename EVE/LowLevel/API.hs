@@ -274,10 +274,27 @@ charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
                          cur   <- f <$> mread start
                          return (cur:rest')
 
-{-
-charMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charMarketOrders = standardRequest "char/MarketOrders"
+charMarketOrders :: EVEDB -> FullAPIKey -> CharacterID ->
+                    IO LowLevelResult
+charMarketOrders = standardRequest "char/MarketOrders" $ parseRows $ \ r -> do
+  oid <- OrderID      <$> (mread =<< findAttr (unqual "orderID")      r)
+  cid <- CharID       <$> (mread =<< findAttr (unqual "charID")       r)
+  tid <- StatID       <$> (mread =<< findAttr (unqual "stationID")    r)
+  ovl <-                   mread =<< findAttr (unqual "volEntered")   r
+  nvl <-                   mread =<< findAttr (unqual "volRemaining") r
+  mvl <-                   mread =<< findAttr (unqual "minVolume")    r
+  ost <- toOrderState <$> (mread =<< findAttr (unqual "orderState")   r)
+  tid <- TypeID       <$> (mread =<< findAttr (unqual "typeID")       r)
+  rng <- toRange      <$> (mread =<< findAttr (unqual "range")        r)
+  aky <-                   mread =<< findAttr (nuqual "accountKey")   r
+  dur <-                   mread =<< findAttr (unqual "duration")     r
+  esc <-                   mread =<< findAttr (unqual "escrow")       r
+  pri <-                   mread =<< findAttr (unqual "price")        r
+  bid <- (/= 0)       <$> (mread =<< findAttr (unqual "bid")          r)
+  iss <-                   tread =<< findAttr (unqual "issued")       r
+  
 
+{-
 charMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
 charMedals = standardRequest "char/Medals"
 
