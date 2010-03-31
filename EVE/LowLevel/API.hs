@@ -275,24 +275,30 @@ charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
                          return (cur:rest')
 
 charMarketOrders :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO LowLevelResult
-charMarketOrders = standardRequest "char/MarketOrders" $ parseRows $ \ r -> do
+                    IO (LowLevelResult [MarketOrder])
+charMarketOrders = standardRequest "char/MarketOrders" $ parseRows readOrder
+
+readOrder :: Element -> Maybe MarketOrder
+readOrder r = do
   oid <- OrderID      <$> (mread =<< findAttr (unqual "orderID")      r)
   cid <- CharID       <$> (mread =<< findAttr (unqual "charID")       r)
-  tid <- StatID       <$> (mread =<< findAttr (unqual "stationID")    r)
+  sid <- StatID       <$> (mread =<< findAttr (unqual "stationID")    r)
   ovl <-                   mread =<< findAttr (unqual "volEntered")   r
   nvl <-                   mread =<< findAttr (unqual "volRemaining") r
   mvl <-                   mread =<< findAttr (unqual "minVolume")    r
   ost <- toOrderState <$> (mread =<< findAttr (unqual "orderState")   r)
-  tid <- TypeID       <$> (mread =<< findAttr (unqual "typeID")       r)
+  tid <- TID          <$> (mread =<< findAttr (unqual "typeID")       r)
   rng <- toRange      <$> (mread =<< findAttr (unqual "range")        r)
-  aky <-                   mread =<< findAttr (nuqual "accountKey")   r
+  aky <-                   mread =<< findAttr (unqual "accountKey")   r
   dur <-                   mread =<< findAttr (unqual "duration")     r
-  esc <-                   mread =<< findAttr (unqual "escrow")       r
+  let esc = case findAttr (unqual "escrow") r of
+              Just x  -> mread x
+              Nothing -> Nothing
   pri <-                   mread =<< findAttr (unqual "price")        r
   bid <- (/= 0)       <$> (mread =<< findAttr (unqual "bid")          r)
   iss <-                   tread =<< findAttr (unqual "issued")       r
-  
+  return (MarketOrder oid cid sid ovl nvl mvl ost tid rng aky dur esc pri bid iss)
+
 
 {-
 charMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
@@ -369,10 +375,11 @@ corpKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
 corpKillLogs = walkableRequest "corp/Killlog" "beforeKillID" $ \ xml ->
  maybe (Left $ EVEParseError xml) Right $ readKillLog xml
 
-{-
-corpMarketOrders :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpMarketOrders = standardRequest "corp/MarketOrders"
+corpMarketOrders :: EVEDB ->  FullAPIKey -> CharacterID ->
+                    IO (LowLevelResult [MarketOrder])
+corpMarketOrders = standardRequest "corp/MarketOrders" $ parseRows readOrder
 
+{-
 corpMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
 corpMedals = standardRequest "corp/Medals"
 

@@ -709,11 +709,13 @@ data OrderState = Open
                 | Cancelled
                 | Pending
                 | CharacterDeleted
+ deriving (Eq, Show)
 
-data Range = Station
-           | SolarSystem
-           | NJumps Int
-           | Region
+data Range = RangeStation
+           | RangeSolarSystem
+           | RangeNJumps Int
+           | RangeRegion
+ deriving (Eq, Show)
 
 toOrderState :: Int -> OrderState
 toOrderState 0 = Open
@@ -724,3 +726,26 @@ toOrderState 4 = Pending
 toOrderState 5 = CharacterDeleted
 
 toRange :: Int -> Range 
+toRange  (-1) = RangeStation
+toRange     0 = RangeSolarSystem
+toRange 32767 = RangeRegion
+toRange     x = RangeNJumps x
+
+data MarketOrder = MarketOrder {
+    moOrderID      :: OrderID
+  , moCharacterID  :: CharacterID
+  , moStationID    :: StationID
+  , moVolEntered   :: Integer
+  , moVolRemaining :: Integer
+  , moMinVolume    :: Integer
+  , moOrderState   :: OrderState
+  , moTypeID       :: TypeID
+  , moRange        :: Range
+  , moAccountKey   :: Integer
+  , moDuration     :: Integer
+  , moEscrow       :: Maybe Float
+  , moPrice        :: Float
+  , moBid          :: Bool
+  , moIssued       :: UTCTime
+  }
+ deriving (Eq, Show)
