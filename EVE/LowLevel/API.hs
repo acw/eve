@@ -330,13 +330,29 @@ charNotifications = standardRequest "char/Notifications"
 
 charMailingLists :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charMailingLists = standardRequest "char/mailinglists"
+-}
 
-corpAccountBalances :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpAccountBalances = standardRequest "corp/AccountBalance"
+corpAccountBalances :: EVEDB -> FullAPIKey -> CharacterID -> 
+                       IO (LowLevelResult [(AccountID, Integer, Double)])
+corpAccountBalances = 
+ standardRequest "corp/AccountBalance" $ parseRows $ \ r -> do
+  accountID <- AccID <$> (mread =<< findAttr (unqual "accountID")  r)
+  accKey    <-            mread =<< findAttr (unqual "accountKey") r
+  amount    <-            mread =<< findAttr (unqual "balance")    r
+  return (accountID, accKey, amount)
 
-corpAssetList :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpAssetList = extendedRequest [("version", "2")] "corp/AssetList"
+corpAssetList :: EVEDB -> FullAPIKey -> CharacterID -> 
+                 IO (LowLevelResult [Item])
+corpAssetList = 
+ extendedRequest [("version", "2")] "corp/AssetList" $ \ x ->
+  maybe (Left $ EVEParseError x) Right $ do
+   rs0 <- findElement (unqual "result") x
+   rs1 <- findChild   (unqual "rowset") rs0
+   foldChildren "row" rs1 [] $ \ acc cur -> do
+     res <- parseItem Nothing cur
+     return (res : acc)
 
+{-
 corpContainerLog :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpContainerLog = standardRequest "corp/ContainerLog"
 
@@ -365,7 +381,7 @@ corpFactionalWarfareStats = standardRequest "corp/FacWarStats" $ \ x ->
     return Nothing
 
 
-{- Skil this one for now
+{- Skip this one for now
 corpIndustryJobs :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpIndustryJobs = standardRequest "corp/IndustryJobs"
 -}
