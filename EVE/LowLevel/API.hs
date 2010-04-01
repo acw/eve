@@ -17,9 +17,7 @@ module EVE.LowLevel.API
        , charStandings
        , charWalletJournal
        , charWalletTransactions
-       , charMailMessages
        , charNotifications
-       , charMailingLists
        , corpAccountBalances
        , corpAssetList
        , corpContainerLog
@@ -324,13 +322,47 @@ parseBaseMedal r = do
   idt <-              tread =<< findAttr (unqual "issued")   r
   return (MedalAward mid res sta iid idt ())
 
+charSkillInTraining :: APIKey k => 
+                       EVEDB -> k -> CharacterID -> 
+                       IO (LowLevelResult (Maybe SkillInTraining))
+charSkillInTraining = standardRequest "char/SkillInTraining" $ \ x -> do
+ maybe (Left $ EVEParseError x) Right $ do
+  training <- mread =<< getElementData "skillInTraining" x
+  if training == 0
+    then return Nothing
+    else Just <$> parseSIT x
+ where
+  parseSIT s = do
+   tid <- SkillID <$> (mread =<< getElementData "trainingTypeID"        s)
+   end <-              tread =<< getElementData "trainingEndTime"       s
+   sta <-              tread =<< getElementData "trainingStartTime"     s
+   sps <-              mread =<< getElementData "trainingStartSP"       s
+   spe <-              mread =<< getElementData "trainingDestinationSP" s
+   lev <-              mread =<< getElementData "trainingToLevel"       s
+   return (SkillInTraining tid sta end sps spe lev)
+
+charSkillQueue :: APIKey k => 
+                  EVEDB -> k -> CharacterID ->
+                  IO (LowLevelResult [SkillInTraining])
+charSkillQueue = standardRequest "char/SkillQueue" $ \ x -> do
+ maybe (Left $ EVEParseError x) Right $ do
+  rows <- sequence $ map parseSQRow $ findElements (unqual "row") x
+  return (map snd (sortBy comp rows))
+ where
+  comp :: (Integer, SkillInTraining) -> (Integer, SkillInTraining) -> Ordering
+  comp a b = compare (fst a) (fst b)
+  parseSQRow :: Element -> Maybe (Integer, SkillInTraining)
+  parseSQRow r = do
+    pos <-              mread =<< findAttr (unqual "queuePosition") r
+    tid <- SkillID <$> (mread =<< findAttr (unqual "typeID")        r)
+    lev <-              mread =<< findAttr (unqual "level")         r
+    ssp <-              mread =<< findAttr (unqual "startSP")       r
+    esp <-              mread =<< findAttr (unqual "endSP")         r
+    stm <-              tread =<< findAttr (unqual "startTime")     r
+    etm <-              tread =<< findAttr (unqual "endTime")       r
+    return (pos, SkillInTraining tid stm etm ssp esp lev) 
+
 {-
-charSkillInTraining :: APIKey k => k -> CharacterID -> IO LowLevelResult
-charSkillInTraining = standardRequest "char/SkillInTraining"
-
-charSkillQueue :: APIKey k => k -> CharacterID -> IO LowLevelResult
-charSkillQueue = standardRequest "char/SkillQueue"
-
 charStandings :: APIKey k => k -> CharacterID -> IO LowLevelResult
 charStandings = standardRequest "char/Standings"
 
@@ -343,14 +375,8 @@ charWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
 charWalletTransactions = 
   walkableRequest "char/WalletTransactions" "beforeTransID"
 
-charMailMessages :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charMailMessages = standardRequest "char/MailMessages"
-
 charNotifications :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charNotifications = standardRequest "char/Notifications"
-
-charMailingLists :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charMailingLists = standardRequest "char/mailinglists"
 -}
 
 corpAccountBalances :: EVEDB -> FullAPIKey -> CharacterID -> 

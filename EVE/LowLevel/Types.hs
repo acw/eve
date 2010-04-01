@@ -103,6 +103,15 @@ data Skill = Skill {
              }
  deriving (Show)
 
+data SkillInTraining = SkillInTraining {
+    trainSkillID   :: SkillID
+  , trainStartTime :: UTCTime
+  , trainEndTime   :: UTCTime
+  , trainStartSP   :: Integer
+  , trainEndSP     :: Integer
+  , trainLevel     :: Integer
+  }
+ deriving (Show)
 
 data Bonus = AccessDifficulty Integer
            | Agility Integer
@@ -519,7 +528,7 @@ data LocationFlag =
   | Passenger
   | BoardingGate
   | Crew
-  | SkillInTraining
+  | LocSkillInTraining
   | CorpMarket
   | Locked
   | Unlocked
@@ -553,7 +562,7 @@ toLocFlag  57 = Just Pilot
 toLocFlag  58 = Just Passenger
 toLocFlag  59 = Just BoardingGate
 toLocFlag  60 = Just Crew
-toLocFlag  61 = Just SkillInTraining
+toLocFlag  61 = Just LocSkillInTraining
 toLocFlag  62 = Just CorpMarket
 toLocFlag  63 = Just Locked
 toLocFlag  64 = Just Unlocked
@@ -594,7 +603,7 @@ fromLocFlag Pilot                       = 57
 fromLocFlag Passenger                   = 58
 fromLocFlag BoardingGate                = 59
 fromLocFlag Crew                        = 60
-fromLocFlag SkillInTraining             = 61
+fromLocFlag LocSkillInTraining          = 61
 fromLocFlag CorpMarket                  = 62
 fromLocFlag Locked                      = 63
 fromLocFlag Unlocked                    = 64
