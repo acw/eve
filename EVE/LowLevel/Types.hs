@@ -749,3 +749,29 @@ data MarketOrder = MarketOrder {
   , moIssued       :: UTCTime
   }
  deriving (Eq, Show)
+
+-----------------------------------------------------------------------------
+-- Medals
+--
+
+newtype MedalID = MedalID Integer deriving (Show)
+
+data Show a => MedalAward a = MedalAward {
+    medaID     :: MedalID 
+  , medaReason :: String
+  , medaStatus :: String
+  , medaIssuer :: CharacterID
+  , medaIssued :: UTCTime
+  , medaExtra  :: a
+  }
+ deriving (Show)
+
+data Medal = Medal {
+    medID          :: MedalID
+  , medTitle       :: String
+  , medDescription :: String
+  , medCreator     :: CharacterID
+  , medCreated     :: UTCTime
+  }
+ deriving (Show)
+

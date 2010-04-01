@@ -299,11 +299,32 @@ readOrder r = do
   iss <-                   tread =<< findAttr (unqual "issued")       r
   return (MarketOrder oid cid sid ovl nvl mvl ost tid rng aky dur esc pri bid iss)
 
+charMedals :: APIKey k => EVEDB -> k -> CharacterID ->
+              IO (LowLevelResult ([MedalAward ()],
+                                  [MedalAward (CorporationID, String, String)]))
+charMedals = standardRequest "char/Medals" $ \ x ->
+ maybe (Left $ EVEParseError x) Right $ do
+  curs <- findElementWithAttName "currentCorporation" x
+  oths <- findElementWithAttName "otherCorporations"  x
+  mc   <- mapChildren "row" curs parseBaseMedal
+  oc   <- mapChildren "row" oths $ \ r -> do
+            base <- parseBaseMedal r
+            cid  <- CorpID <$> (mread =<< findAttr (unqual "corporationID") r)
+            titl <-                       findAttr (unqual "title")         r
+            desc <-                       findAttr (unqual "description")   r
+            return base { medaExtra = (cid, titl, desc) }
+  return (mc, oc)
+
+parseBaseMedal :: Element -> Maybe (MedalAward ())
+parseBaseMedal r = do
+  mid <- MedalID <$> (mread =<< findAttr (unqual "medalID")  r)
+  res <-                        findAttr (unqual "reason")   r
+  sta <-                        findAttr (unqual "status")   r
+  iid <- CharID  <$> (mread =<< findAttr (unqual "issuerID") r)
+  idt <-              tread =<< findAttr (unqual "issued")   r
+  return (MedalAward mid res sta iid idt ())
 
 {-
-charMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
-charMedals = standardRequest "char/Medals"
-
 charSkillInTraining :: APIKey k => k -> CharacterID -> IO LowLevelResult
 charSkillInTraining = standardRequest "char/SkillInTraining"
 
@@ -391,17 +412,28 @@ corpKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
 corpKillLogs = walkableRequest "corp/Killlog" "beforeKillID" $ \ xml ->
  maybe (Left $ EVEParseError xml) Right $ readKillLog xml
 
-corpMarketOrders :: EVEDB ->  FullAPIKey -> CharacterID ->
+corpMarketOrders :: EVEDB -> FullAPIKey -> CharacterID ->
                     IO (LowLevelResult [MarketOrder])
 corpMarketOrders = standardRequest "corp/MarketOrders" $ parseRows readOrder
 
+corpMedals :: APIKey k =>
+              EVEDB -> k -> CharacterID ->
+              IO (LowLevelResult [Medal])
+corpMedals = standardRequest "corp/Medals" $ parseRows $ \ r -> do
+  mid <- MedalID <$> (mread =<< findAttr (unqual "medalID")     r)
+  ttl <-                        findAttr (unqual "title")       r
+  dsc <-                        findAttr (unqual "description") r
+  crt <- CharID  <$> (mread =<< findAttr (unqual "creatorID")   r)
+  crd <-              tread =<< findAttr (unqual "created")     r
+  return (Medal mid ttl dsc crt crd)
+
+corpMemberMedals :: APIKey k =>
+                    EVEDB -> k -> CharacterID ->
+                    IO (LowLevelResult [MedalAward ()])
+corpMemberMedals =
+ standardRequest "corp/MemberMedals" $ parseRows parseBaseMedal
+
 {-
-corpMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
-corpMedals = standardRequest "corp/Medals"
-
-corpMemberMedals :: APIKey k => k -> CharacterID -> IO LowLevelResult
-corpMemberMedals = standardRequest "corp/MemberMedals"
-
 corpMemberSecurity :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMemberSecurity = standardRequest "corp/MemberSecurity"
 
