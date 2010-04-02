@@ -362,10 +362,36 @@ charSkillQueue = standardRequest "char/SkillQueue" $ \ x -> do
     etm <-              tread =<< findAttr (unqual "endTime")       r
     return (pos, SkillInTraining tid stm etm ssp esp lev) 
 
-{-
-charStandings :: APIKey k => k -> CharacterID -> IO LowLevelResult
-charStandings = standardRequest "char/Standings"
+charStandings :: APIKey k =>
+                 EVEDB -> k -> CharacterID ->
+                 IO (LowLevelResult ([Standing CharacterID],
+                                     [Standing CorporationID],
+                                     [Standing FactionID]))
+charStandings = standardRequest "char/Standings" $ \ x -> do
+ maybe (Left $ EVEParseError x) Right $ do
+  standsTo   <- findElement (unqual "standingsTo")       x
+  standsFrom <- findElement (unqual "standingsFrom")     x
+  charsTo    <- findElementWithAttName "characters"      standsTo
+  corpsTo    <- findElementWithAttName "corporations"    standsTo
+  agntsFrom  <- findElementWithAttName "agents"          standsFrom
+  corpsFrom  <- findElementWithAttName "NPCCorporations" standsFrom
+  factsFrom  <- findElementWithAttName "factions"        standsFrom
+  char1      <- parseStandings charsTo   "to"   CharID (Standing GivenStanding)
+  corp1      <- parseStandings corpsTo   "to"   CorpID (Standing GivenStanding)
+  char2      <- parseStandings agntsFrom "from" CharID (Standing GottenStanding)
+  corp2      <- parseStandings corpsFrom "from" CorpID (Standing GottenStanding)
+  facts      <- parseStandings factsFrom "from" FacID  (Standing GottenStanding)
+  return (char1 ++ char2, corp1 ++ corp2, facts)
+ where
+  parseStandings xs prefix idBuild objBuild = 
+   sequence $ for (findElements (unqual "row") xs) $ \ x -> do
+    sid <- idBuild <$> (mread =<< findAttr (unqual $ prefix ++ "ID")   x)
+    sst <-                        findAttr (unqual $ prefix ++ "Name") x
+    stn <-              mread =<< findAttr (unqual   "standing")       x
+    return (objBuild sid sst stn)
+  for = flip map
 
+{-
 charWalletJournal :: FullAPIKey -> CharacterID -> Maybe RefID -> IO
                      LowLevelResult
 charWalletJournal = walkableRequest "char/WalletJournal" "beforeRefID"

@@ -784,3 +784,18 @@ data Medal = Medal {
   }
  deriving (Show)
 
+-----------------------------------------------------------------------------
+-- Standings
+--
+
+data StandingDir = GivenStanding | GottenStanding
+ deriving (Eq, Show)
+
+data Show a => Standing a = Standing {
+    standingDirection :: StandingDir
+  , standingID        :: a
+  , standingName      :: String
+  , standingValue     :: Float
+  }
+ deriving (Show)
+
