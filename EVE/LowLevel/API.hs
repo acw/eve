@@ -451,10 +451,15 @@ charWalletTransactions =
   tf <-             mread =<< findAttr (unqual "transactionFor")      r
   return (WalletTransaction td ti qn (oi, on) pr (ci, cn) (si, sn) tt tf)
 
-{-
-charNotifications :: FullAPIKey -> CharacterID -> IO LowLevelResult
-charNotifications = standardRequest "char/Notifications"
--}
+charNotifications :: EVEDB -> FullAPIKey -> CharacterID -> 
+                     IO (LowLevelResult [Notification])
+charNotifications = standardRequest "char/Notifications" $ parseRows $ \ r -> do
+  ni <- NotID     <$> (mread =<< findAttr (unqual "notificationID") r)
+  ti <- toNotType =<< (mread =<< findAttr (unqual "typeID")         r)
+  si <- CharID    <$> (mread =<< findAttr (unqual "senderID")       r)
+  sd <-                tread =<< findAttr (unqual "sentDate")       r
+  rd <- (== 1)    <$> (mread =<< findAttr (unqual "read")           r)
+  return (Notification ni ti si sd rd)
 
 corpAccountBalances :: EVEDB -> FullAPIKey -> CharacterID -> 
                        IO (LowLevelResult [(AccountID, Integer, Double)])

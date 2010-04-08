@@ -688,7 +688,7 @@ data AttackerInfo = AttackerInfo {
  deriving (Show)
 
 -----------------------------------------------------------------------------
--- Mail Messages
+-- Mail Messages and Notifications
 --
 
 data MailMessage = MailMessage {
@@ -706,6 +706,193 @@ data MailDestination = ToCorpOrAlliance CorporationID
                      | ToMailingList    ListID
  deriving (Show)
 
+data Notification = Notification {
+    ntID          :: NotificationID
+  , ntType        :: NotificationType
+  , ntSender      :: CharacterID
+  , ntSentDate    :: UTCTime
+  , ntRead        :: Bool
+  }
+ deriving (Show)
+
+newtype NotificationID = NotID Integer deriving (Eq, Show)
+
+data NotificationType = CharacterDeleted
+                      | MedalReceived
+                      | AllianceMaintenanceBill
+                      | AllianceWarDeclared
+                      | AllianceWarSurrendered
+                      | AllianceWarRetracted
+                      | AllianceWarInvalidated
+                      | BillIssuedToChar
+                      | BillIssuedToCorp
+                      | BillNotPaid
+                      | CharIssuedBillPaid
+                      | CorpIssuedBillPaid
+                      | BountyClaimed
+                      | CloneActivated
+                      | NewCorpMemberApplication
+                      | CorpApplicationRejected
+                      | CorpApplicationAccepted
+                      | CorpTaxRateChanged
+                      | CorpNewsReport
+                      | PlayerLeftCorp
+                      | NewCorpCEO
+                      | CorpDividendSent
+                      | CorpDividendPayout
+                      | CorpVoteCreated
+                      | CorpCEOVotesRevoked
+                      | CorpDeclaresWar
+                      | CorpWarStarted
+                      | CorpSurrendersWar
+                      | CorpRetractsWar
+                      | CorpWarInvalidated
+                      | ContainerPasswordRetrieved
+                      | ContrabandOrStandingsAttack
+                      | FirstShipInsurance
+                      | ShipDestroyedInsurancePaid
+                      | InsuranceContractInvalidated
+                      | AllianceSovereigntyClaimFailed
+                      | CorpSovereigntyClaimFailed
+                      | AllianceSovereigntyBillLate
+                      | CorpSovereigntyBillLate
+                      | AllianceSovereigntyClaimLost
+                      | CorpSovereigntyClaimLost
+                      | AllianceSovereigntyClaimed
+                      | CorpSovereigntyClaimed
+                      | AllianceAnchoringAlert
+                      | AllianceStructureVulnerable
+                      | AllianceStructureInvulnerable
+                      | SovereigntyDisruptorAnchored
+                      | StructureWonOrLost
+                      | CorpOfficeLeaseExpired
+                      | CloneContractRevoked
+                      | CorpMemberClonesMoved
+                      | InsuranceContractExpired
+                      | InsuranceContractIssued
+                      | JumpCloneDestroyed
+                      | CorporationJoiningFactionalWar
+                      | CorporationLeavingFactionalWar
+                      | CorporationKickedForStanding
+                      | CharacterKickedForStanding
+                      | CorporationWarnedForStanding
+                      | CharacterWarnedForStanding
+                      | CharacterLosesRank
+                      | CharacterGainsRank
+                      | AgentHasMoved
+                      | MassTransactionReversal
+                      | ReimbursementMessage
+                      | AgentLocatesCharacter
+                      | ResearchMissionAvailable
+                      | AgentMissionOfferExpired
+                      | AgentMissionTimedOut
+                      | StorylineMissionOffered
+                      | TutorialMessageSent
+                      | TowerAlert
+                      | TowerResourceAlert
+                      | StationAggression
+                      | StationStateChange
+                      | StationConquered
+                      | CorpRequestsJoinFactionalWar
+                      | CorpRequestsLeaveFactionWar
+                      | CorpWithdrawsJoinRequest
+                      | CorpWithdrawsLeaveRequest
+                      | CorporationLiquidation
+                      | TerritorialClaimUnitAttacked
+                      | SovereigntyBlockadeUnitAttacked
+                      | InfrastructureHubAttacked
+ deriving (Show)
+
+toNotType :: Integer -> Maybe NotificationType
+toNotType 02 = Just CharacterDeleted
+toNotType 03 = Just MedalReceived
+toNotType 04 = Just AllianceMaintenanceBill
+toNotType 05 = Just AllianceWarDeclared
+toNotType 06 = Just AllianceWarSurrendered
+toNotType 07 = Just AllianceWarRetracted
+toNotType 08 = Just AllianceWarInvalidated
+toNotType 09 = Just BillIssuedToChar
+toNotType 10 = Just BillIssuedToCorp
+toNotType 11 = Just BillNotPaid
+toNotType 12 = Just CharIssuedBillPaid
+toNotType 13 = Just CorpIssuedBillPaid
+toNotType 14 = Just BountyClaimed
+toNotType 15 = Just CloneActivated
+toNotType 16 = Just NewCorpMemberApplication
+toNotType 17 = Just CorpApplicationRejected
+toNotType 18 = Just CorpApplicationAccepted
+toNotType 19 = Just CorpTaxRateChanged
+toNotType 20 = Just CorpNewsReport
+toNotType 21 = Just PlayerLeftCorp
+toNotType 22 = Just NewCorpCEO
+toNotType 23 = Just CorpDividendSent
+toNotType 24 = Just CorpDividendPayout
+toNotType 25 = Just CorpVoteCreated
+toNotType 26 = Just CorpCEOVotesRevoked
+toNotType 27 = Just CorpDeclaresWar
+toNotType 28 = Just CorpWarStarted
+toNotType 29 = Just CorpSurrendersWar
+toNotType 30 = Just CorpRetractsWar
+toNotType 31 = Just CorpWarInvalidated
+toNotType 32 = Just ContainerPasswordRetrieved
+toNotType 33 = Just ContrabandOrStandingsAttack
+toNotType 34 = Just FirstShipInsurance
+toNotType 35 = Just ShipDestroyedInsurancePaid
+toNotType 36 = Just InsuranceContractInvalidated
+toNotType 37 = Just AllianceSovereigntyClaimFailed
+toNotType 38 = Just CorpSovereigntyClaimFailed
+toNotType 39 = Just AllianceSovereigntyBillLate
+toNotType 40 = Just CorpSovereigntyBillLate
+toNotType 41 = Just AllianceSovereigntyClaimLost
+toNotType 42 = Just CorpSovereigntyClaimLost
+toNotType 43 = Just AllianceSovereigntyClaimed
+toNotType 44 = Just CorpSovereigntyClaimed
+toNotType 45 = Just AllianceAnchoringAlert
+toNotType 46 = Just AllianceStructureVulnerable
+toNotType 47 = Just AllianceStructureInvulnerable
+toNotType 48 = Just SovereigntyDisruptorAnchored
+toNotType 49 = Just StructureWonOrLost
+toNotType 50 = Just CorpOfficeLeaseExpired
+toNotType 51 = Just CloneContractRevoked
+toNotType 52 = Just CorpMemberClonesMoved
+toNotType 53 = Just CloneContractRevoked
+toNotType 54 = Just InsuranceContractExpired
+toNotType 55 = Just InsuranceContractIssued
+toNotType 56 = Just JumpCloneDestroyed
+toNotType 57 = Just JumpCloneDestroyed
+toNotType 58 = Just CorporationJoiningFactionalWar
+toNotType 59 = Just CorporationLeavingFactionalWar
+toNotType 60 = Just CorporationKickedForStanding
+toNotType 61 = Just CharacterKickedForStanding
+toNotType 62 = Just CorporationWarnedForStanding
+toNotType 63 = Just CharacterWarnedForStanding
+toNotType 64 = Just CharacterLosesRank
+toNotType 65 = Just CharacterGainsRank
+toNotType 66 = Just AgentHasMoved
+toNotType 67 = Just MassTransactionReversal
+toNotType 68 = Just ReimbursementMessage
+toNotType 69 = Just AgentLocatesCharacter
+toNotType 70 = Just ResearchMissionAvailable
+toNotType 71 = Just AgentMissionOfferExpired
+toNotType 72 = Just AgentMissionTimedOut
+toNotType 73 = Just StorylineMissionOffered
+toNotType 74 = Just TutorialMessageSent
+toNotType 75 = Just TowerAlert
+toNotType 76 = Just TowerResourceAlert
+toNotType 77 = Just StationAggression
+toNotType 78 = Just StationStateChange
+toNotType 79 = Just StationConquered
+toNotType 80 = Just StationAggression
+toNotType 81 = Just CorpRequestsJoinFactionalWar
+toNotType 82 = Just CorpRequestsLeaveFactionWar
+toNotType 83 = Just CorpWithdrawsJoinRequest
+toNotType 84 = Just CorpWithdrawsLeaveRequest
+toNotType 85 = Just CorporationLiquidation
+toNotType 86 = Just TerritorialClaimUnitAttacked
+toNotType 87 = Just SovereigntyBlockadeUnitAttacked
+toNotType 88 = Just InfrastructureHubAttacked
+toNotType _  = Nothing
+
 -----------------------------------------------------------------------------
 -- Market Orders
 --
@@ -718,7 +905,7 @@ data OrderState = Open
                 | Fulfulled
                 | Cancelled
                 | Pending
-                | CharacterDeleted
+                | OrderCharacterDeleted
  deriving (Eq, Show)
 
 data Range = RangeStation
@@ -733,7 +920,7 @@ toOrderState 1 = Closed
 toOrderState 2 = Expired -- I don't get this
 toOrderState 3 = Cancelled
 toOrderState 4 = Pending
-toOrderState 5 = CharacterDeleted
+toOrderState 5 = OrderCharacterDeleted
 
 toRange :: Int -> Range 
 toRange  (-1) = RangeStation
