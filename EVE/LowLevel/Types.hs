@@ -991,6 +991,8 @@ data Show a => Standing a = Standing {
 -- Wallet Stuff
 --
 
+newtype WalletDivisionID = WDID Integer deriving (Show)
+
 data WalletJournalEntry = WalletJournalEntry {
     wjeDate        :: UTCTime
   , wjeRefID       :: RefID
@@ -1062,3 +1064,26 @@ data ContainerLogEntry = ContainerLogEntry {
   , clConfigs       :: (String, String)
   }
  deriving (Show)
+
+-----------------------------------------------------------------------------
+-- Corporation Info
+--
+
+data Corporation = Corporation {
+    corpID              :: CorporationID
+  , corpName            :: String
+  , corpTicker          :: String
+  , corpCEO             :: (CharacterID, String)
+  , corpHQ              :: (StationID, String)
+  , corpDescription     :: String
+  , corpURL             :: String
+  , corpAlliance        :: Maybe (AllianceID, String)
+  , corpTaxRate         :: Integer
+  , corpMembers         :: Integer
+  , corpMemberLimit     :: Maybe Integer
+  , corpShared          :: Integer
+  , corpDivisions       :: Maybe [(AccountID, String)]
+  , corpWalletDivisions :: Maybe [(WalletDivisionID, String)]
+  }
+ deriving (Show)
+

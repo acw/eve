@@ -21,6 +21,7 @@ module EVE.LowLevel.API
        , corpAccountBalances
        , corpAssetList
        , corpContainerLog
+       , charCorporationSheet
        , corporationSheet
        , corpFactionalWarfareStats
        , corpIndustryJobs
@@ -503,11 +504,57 @@ corpContainerLog = standardRequest "corp/ContainerLog" $ parseRows $ \ r -> do
   nc <-                       findAttr (unqual "newConfiguration") r
   return (ContainerLogEntry lt (ii, it) (ai, an) fl li ac pt ti (oc, nc))
 
-{-
-corporationSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
-corporationSheet = standardRequest "corp/CorporationSheet"
+charCorporationSheet :: APIKey k => 
+                        EVEDB -> k -> CharacterID ->
+                        IO (LowLevelResult Corporation)
+charCorporationSheet = standardRequest "corp/CorporationSheet" $ \ x ->
+ maybe (Left $ EVEParseError x) Right $ parseCorporationSheet x
 
--}
+corporationSheet :: EVEDB -> CorporationID -> IO (LowLevelResult Corporation)
+corporationSheet db (CorpID cid) =
+  runRequest "corp/CorporationSheet" [("corporationID", show cid)]
+             (\ x ->
+               maybe (Left $ EVEParseError x) Right $ parseCorporationSheet x)
+             db
+
+parseCorporationSheet :: Element -> Maybe Corporation
+parseCorporationSheet x = do
+  ci <- CorpID     <$> (mread =<< getElementData "corporationID"   x)
+  cn <-                           getElementData "corporationName" x
+  tk <-                           getElementData "ticker"          x
+  li <- CharID     <$> (mread =<< getElementData "ceoID"           x)
+  ln <-                           getElementData "ceoName"         x
+  si <- StatID     <$> (mread =<< getElementData "stationID"       x)
+  sn <-                           getElementData "stationName"     x
+  de <-                           getElementData "description"     x
+  ur <-                           getElementData "url"             x
+  let al = case AllianceID <$> (mread =<< getElementData "allianceID" x) of
+             Just ai -> do
+               an <- getElementData "allianceName" x
+               return (ai, an)
+             Nothing ->
+               Nothing
+  tr <-                 mread =<< getElementData "taxRate"         x
+  mc <-                 mread =<< getElementData "memberCount"     x
+  let ml = case mread =<< getElementData "memberLimit" x of
+             Just lim -> Just lim
+             Nothing  -> Nothing
+  sh <-                 mread =<< getElementData "shares"          x
+  let divs = case findElementWithAttName "divisions" x of
+               Just rs -> mapChildren "row" rs $ \ r -> do
+                 ak <- AccID <$> (mread =<< findAttr (unqual "accountKey")  r)
+                 an <-                      findAttr (unqual "description") r
+                 return (ak, an)
+               Nothing ->
+                 Nothing
+      wals = case findElementWithAttName "walletDivisions" x of
+               Just rs -> mapChildren "row" rs $ \ r -> do
+                 ak <- WDID <$> (mread =<< findAttr (unqual "accountKey")  r)
+                 an <-                     findAttr (unqual "description") r
+                 return (ak, an)
+               Nothing ->
+                 Nothing
+  return (Corporation ci cn tk (li, ln) (si, sn) de ur al tr mc ml sh divs wals) 
 
 corpFactionalWarfareStats :: APIKey k =>
                              EVEDB -> k -> CharacterID ->
