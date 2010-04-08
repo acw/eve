@@ -805,14 +805,14 @@ data Show a => Standing a = Standing {
 --
 
 data WalletJournalEntry = WalletJournalEntry {
-    wtDate        :: UTCTime
-  , wtRefID       :: RefID
-  , wtFirstParty  :: (CharacterID, String)
-  , wtSecondParty :: (CharacterID, String)
-  , wtAmount      :: Float
-  , wtBalance     :: Float
-  , wtTaxInfo     :: Maybe (CorporationID, Float)
-  , wtExtraInfo   :: TransactionInfo
+    wjeDate        :: UTCTime
+  , wjeRefID       :: RefID
+  , wjeFirstParty  :: (CharacterID, String)
+  , wjeSecondParty :: (CharacterID, String)
+  , wjeAmount      :: Float
+  , wjeBalance     :: Float
+  , wjeTaxInfo     :: Maybe (CorporationID, Float)
+  , wjeExtraInfo   :: TransactionInfo
   }
  deriving (Show)
 
@@ -827,3 +827,35 @@ data TransactionInfo = PlayerTrading StationID String
                      | BountyPrizes SolarSystemID
                      | Unknown Integer
  deriving (Show)
+
+data TransactionType = BUY | SELL
+ deriving (Show)
+
+instance Read TransactionType where
+  readsPrec _ s = case map toLower s of
+                    "buy"  -> [(BUY, "")]
+                    "sell" -> [(SELL, "")]
+                    _      -> []
+
+data TransactionOwner = PERSONAL | CORPORATION
+ deriving (Show)
+
+instance Read TransactionOwner where
+  readsPrec _ s = case map toLower s of
+                    "personal"    -> [(PERSONAL, "")]
+                    "corporation" -> [(CORPORATION, "")]
+                    _             -> []
+
+data WalletTransaction = WalletTransaction {
+    wtDate           :: UTCTime
+  , wtRefID          :: RefID
+  , wtQuantity       :: Integer
+  , wtObject         :: (TypeID, String)
+  , wtPrice          :: Float
+  , wtClient         :: (CharacterID, String)
+  , wtStation        :: (StationID, String)
+  , wtTransaction    :: TransactionType
+  , wtTransactionFor :: TransactionOwner
+  }
+ deriving (Show)
+

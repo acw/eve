@@ -433,12 +433,25 @@ charWalletJournal =
     return (WalletJournalEntry dat ref (p1i,p1n) (p2i,p2n) 
                                amt bal txi ext)
 
-{-
-charWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
-                          IO LowLevelResult
+charWalletTransactions :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
+                          IO (LowLevelResult [WalletTransaction])
 charWalletTransactions = 
-  walkableRequest "char/WalletTransactions" "beforeTransID"
+ walkableRequest "char/WalletTransactions" "beforeTransID"$ parseRows $ \r -> do
+  td <-             tread =<< findAttr (unqual "transactionDateTime") r
+  ti <- RID    <$> (mread =<< findAttr (unqual "transactionID")       r)
+  qn <-             mread =<< findAttr (unqual "quantity")            r
+  on <-                       findAttr (unqual "typeName")            r
+  oi <- TID    <$> (mread =<< findAttr (unqual "typeID")              r)
+  pr <-             mread =<< findAttr (unqual "price")               r
+  ci <- CharID <$> (mread =<< findAttr (unqual "clientID")            r)
+  cn <-                       findAttr (unqual "clientName")          r
+  si <- StatID <$> (mread =<< findAttr (unqual "stationID")           r)
+  sn <-                       findAttr (unqual "stationName")         r
+  tt <-             mread =<< findAttr (unqual "transactionType")     r
+  tf <-             mread =<< findAttr (unqual "transactionFor")      r
+  return (WalletTransaction td ti qn (oi, on) pr (ci, cn) (si, sn) tt tf)
 
+{-
 charNotifications :: FullAPIKey -> CharacterID -> IO LowLevelResult
 charNotifications = standardRequest "char/Notifications"
 -}
