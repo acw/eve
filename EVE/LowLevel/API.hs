@@ -395,7 +395,10 @@ charStandings = standardRequest "char/Standings" $ \ x -> do
 charWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID -> IO
                      (LowLevelResult [WalletJournalEntry])
 charWalletJournal =
-  walkableRequest "char/WalletJournal" "beforeRefID" $ parseRows $ \ r -> do
+  walkableRequest "char/WalletJournal" "beforeRefID" parseWalletJournal
+
+parseWalletJournal :: Element -> LowLevelResult [WalletJournalEntry]
+parseWalletJournal = parseRows $ \ r -> do
     dat <-             tread =<< findAttr (unqual "date")          r
     ref <- RID    <$> (mread =<< findAttr (unqual "refID")         r)
     p1i <- CharID <$> (mread =<< findAttr (unqual "ownerID1")      r)
@@ -436,8 +439,11 @@ charWalletJournal =
 
 charWalletTransactions :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
                           IO (LowLevelResult [WalletTransaction])
-charWalletTransactions = 
- walkableRequest "char/WalletTransactions" "beforeTransID"$ parseRows $ \r -> do
+charWalletTransactions =
+ walkableRequest "char/WalletTransactions" "beforeTransID" parseWalletTrans
+
+parseWalletTrans :: Element -> LowLevelResult [WalletTransaction]
+parseWalletTrans = parseRows $ \r -> do
   td <-             tread =<< findAttr (unqual "transactionDateTime") r
   ti <- RID    <$> (mread =<< findAttr (unqual "transactionID")       r)
   qn <-             mread =<< findAttr (unqual "quantity")            r
@@ -635,16 +641,17 @@ corpStandings = standardRequest "corp/Standings"
 corpTitles :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpTitles = standardRequest "corp/Titles"
 
-corpWalletJournal :: FullAPIKey -> CharacterID -> Maybe RefID ->
-                     IO LowLevelResult
-corpWalletJournal = walkableRequest "corp/WalletJournal" "beforeRefID"
-
-corpWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
-                          IO LowLevelResult
-corpWalletTransactions = 
-  walkableRequest "corp/WalletTransactions" "beforeTransID"
-
 -}
+
+corpWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
+                     IO (LowLevelResult [WalletJournalEntry])
+corpWalletJournal = 
+  walkableRequest "corp/WalletJournal" "beforeRefID" parseWalletJournal
+
+corpWalletTransactions :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
+                          IO (LowLevelResult [WalletTransaction])
+corpWalletTransactions = 
+  walkableRequest "corp/WalletTransactions" "beforeTransID" parseWalletTrans
 
 eveAllianceList :: EVEDB -> IO (LowLevelResult [Alliance])
 eveAllianceList = runRequest "eve/AllianceList" [] parse
