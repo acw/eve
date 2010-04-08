@@ -613,10 +613,42 @@ corpMemberMedals :: APIKey k =>
 corpMemberMedals =
  standardRequest "corp/MemberMedals" $ parseRows parseBaseMedal
 
-{-
-corpMemberSecurity :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpMemberSecurity = standardRequest "corp/MemberSecurity"
+corpMemberSecurity :: EVEDB -> FullAPIKey -> CharacterID -> 
+                      IO (LowLevelResult [CorpMemberSecurity])
+corpMemberSecurity = standardRequest "corp/MemberSecurity" $ \ v ->
+ maybe (Left $ EVEParseError v) Right $ mapElements "member" v $ \ x -> do
+   chi <- CharID <$> (mread =<< findAttr (unqual "characterID") x)
+   chn <-                       findAttr (unqual "name")        x
+   tls <- do rs <- findElementWithAttName "titles" x
+             mapElements "row" rs $ \ r -> do
+               tid <- TitleID <$> (mread =<< findAttr (unqual "titleID")   r)
+               tnm <-                        findAttr (unqual "titleName") r
+               return (CorpTitle tid tnm)
+   rls <- foldM (runRole x) Map.empty roleMap
+   return (CorpMemberSecurity chi chn (Map.elems rls) tls)
+ where
+  fixOld f' _ (CorpRole i n fs) = CorpRole i n (f':fs)
+  updateVal k n f m    = Map.insertWith (fixOld f) k (CorpRole k n [f]) m
+  addRoleEntries f m e = foldElements "row" e m $ \ a r -> do
+    i <- RoleID <$> (mread =<< findAttr (unqual "roleID")   r)
+    n <-                       findAttr (unqual "roleName") r
+    return (updateVal (RoleID 0) n f a)
+  runRole el dict (name,flag) = do
+    rs <- findElementWithAttName name el
+    if null (elChildren rs)
+      then return dict
+      else addRoleEntries flag dict rs
+  roleMap = [ ("roles",                 GeneralRole)
+            , ("grantableRoles",        GrantableRole)
+            , ("rolesAtHQ",             AtHQ)
+            , ("grantableRolesAtHQ",    GrantableAtHQ)
+            , ("rolesAtBase",           AtBase)
+            , ("grantableRolesAtBase",  GrantableAtBase)
+            , ("rolesAtOther",          Elsewhere)
+            , ("grantableRolesAtOther", GrantableElsewhere)
+            ]
 
+{-
 corpMemberSecurityLog :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpMemberSecurityLog = standardRequest "corp/MemberSecurityLog"
 
@@ -640,7 +672,6 @@ corpStandings = standardRequest "corp/Standings"
 
 corpTitles :: FullAPIKey -> CharacterID -> IO LowLevelResult
 corpTitles = standardRequest "corp/Titles"
-
 -}
 
 corpWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->

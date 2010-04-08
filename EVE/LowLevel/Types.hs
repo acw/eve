@@ -1087,3 +1087,31 @@ data Corporation = Corporation {
   }
  deriving (Show)
 
+newtype RoleID = RoleID Integer deriving (Eq, Show, Ord)
+
+data CorpRole = CorpRole {
+    roleID                 :: RoleID
+  , roleName               :: String
+  , roleFlags              :: [RoleFlag]
+  }
+ deriving (Show)
+
+data RoleFlag = GeneralRole | GrantableRole   | AtHQ      | GrantableAtHQ
+              | AtBase      | GrantableAtBase | Elsewhere | GrantableElsewhere
+ deriving (Show)
+
+newtype TitleID = TitleID Integer deriving (Eq, Show, Ord)
+
+data CorpTitle = CorpTitle {
+    titleID                :: TitleID
+  , titleName              :: String
+  }
+ deriving (Show)
+
+data CorpMemberSecurity = CorpMemberSecurity {
+    cmsMemberID :: CharacterID
+  , cmsName     :: String
+  , cmsRoles    :: [CorpRole]
+  , cmsTitles   :: [CorpTitle]
+  }
+ deriving (Show)
