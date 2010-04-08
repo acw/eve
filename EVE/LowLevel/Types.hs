@@ -45,6 +45,7 @@ newtype LocationID       = LocID  Integer deriving (Show,Ord,Eq)
 newtype RefID            = RID    Integer deriving (Show)
 newtype ListID           = ListID Integer deriving (Show)
 newtype MessageID        = MsgID  Integer deriving (Show)
+newtype JobID            = JobID  Integer deriving (Show)
 
 instance Read FactionID where
   readsPrec d s = map (\ (a,b) -> (FacID a,b)) $ readsPrec d s
@@ -799,3 +800,30 @@ data Show a => Standing a = Standing {
   }
  deriving (Show)
 
+-----------------------------------------------------------------------------
+-- Wallet Stuff
+--
+
+data WalletJournalEntry = WalletJournalEntry {
+    wtDate        :: UTCTime
+  , wtRefID       :: RefID
+  , wtFirstParty  :: (CharacterID, String)
+  , wtSecondParty :: (CharacterID, String)
+  , wtAmount      :: Float
+  , wtBalance     :: Float
+  , wtTaxInfo     :: Maybe (CorporationID, Float)
+  , wtExtraInfo   :: TransactionInfo
+  }
+ deriving (Show)
+
+data TransactionInfo = PlayerTrading StationID String
+                     | MarketTransaction RefID
+                     | PlayerDonation String
+                     | Insurance TypeID
+                     | CSPA String CharacterID
+                     | CorpAccountWithdrawal String
+                     | Manufacturing JobID
+                     | Contract
+                     | BountyPrizes SolarSystemID
+                     | Unknown Integer
+ deriving (Show)

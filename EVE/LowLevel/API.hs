@@ -391,11 +391,49 @@ charStandings = standardRequest "char/Standings" $ \ x -> do
     return (objBuild sid sst stn)
   for = flip map
 
-{-
-charWalletJournal :: FullAPIKey -> CharacterID -> Maybe RefID -> IO
-                     LowLevelResult
-charWalletJournal = walkableRequest "char/WalletJournal" "beforeRefID"
+charWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID -> IO
+                     (LowLevelResult [WalletJournalEntry])
+charWalletJournal =
+  walkableRequest "char/WalletJournal" "beforeRefID" $ parseRows $ \ r -> do
+    dat <-             tread =<< findAttr (unqual "date")          r
+    ref <- RID    <$> (mread =<< findAttr (unqual "refID")         r)
+    p1i <- CharID <$> (mread =<< findAttr (unqual "ownerID1")      r)
+    p1n <-                       findAttr (unqual "ownerName1")    r
+    p2i <- CharID <$> (mread =<< findAttr (unqual "ownerID2")      r)
+    p2n <-                       findAttr (unqual "ownerName2")    r
+    amt <-             mread =<< findAttr (unqual "amount")        r
+    bal <-             mread =<< findAttr (unqual "balance")       r
+    typ <-             mread =<< findAttr (unqual "refTypeID")     r
+    let txi = case findAttr (unqual "taxReceiverID") r of
+                Nothing -> Nothing
+                Just rc -> do
+                  txr <- CorpID <$> mread rc
+                  txa <- mread =<< findAttr (unqual "taxAmount") r
+                  return (txr, txa)
+    ext <- case typ :: Integer of
+             1  -> PlayerTrading 
+                     <$> (StatID <$> (mread =<< findAttr (unqual "argID1") r))
+                     <*> (findAttr (unqual "argName1") r)
+             2  -> MarketTransaction 
+                     <$> (RID <$> (mread =<< findAttr (unqual "argName1") r))
+             10 -> PlayerDonation
+                     <$> (findAttr (unqual "reason") r)
+             19 -> Insurance
+                     <$> (TID <$> (mread =<< findAttr (unqual "argName1") r))
+             35 -> CSPA
+                     <$> (findAttr (unqual "argName1") r)
+                     <*> (CharID <$> (mread =<< findAttr (unqual "argID1") r))
+             37 -> CorpAccountWithdrawal
+                     <$> (findAttr (unqual "reason") r)
+             56 -> Manufacturing
+                     <$> (JobID <$> (mread =<< findAttr (unqual "argName1") r))
+             85 -> BountyPrizes
+                     <$> (SSID  <$> (mread =<< findAttr (unqual "argID1") r))
+             _  -> return (Unknown typ)
+    return (WalletJournalEntry dat ref (p1i,p1n) (p2i,p2n) 
+                               amt bal txi ext)
 
+{-
 charWalletTransactions :: FullAPIKey -> CharacterID -> Maybe RefID ->
                           IO LowLevelResult
 charWalletTransactions = 
