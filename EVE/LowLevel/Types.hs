@@ -1046,3 +1046,19 @@ data WalletTransaction = WalletTransaction {
   }
  deriving (Show)
 
+-----------------------------------------------------------------------------
+-- Container Logs
+--
+
+data ContainerLogEntry = ContainerLogEntry {
+    clTime          :: UTCTime
+  , clItem          :: (ItemID, TypeID)
+  , clActor         :: (CharacterID, String)
+  , clFlag          :: Integer -- ?
+  , clLocation      :: LocationID
+  , clAction        :: String
+  , clPasswordType  :: String
+  , clObject        :: Maybe (TypeID, Integer)
+  , clConfigs       :: (String, String)
+  }
+ deriving (Show)

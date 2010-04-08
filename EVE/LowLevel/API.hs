@@ -481,10 +481,29 @@ corpAssetList =
      res <- parseItem Nothing cur
      return (res : acc)
 
-{-
-corpContainerLog :: FullAPIKey -> CharacterID -> IO LowLevelResult
-corpContainerLog = standardRequest "corp/ContainerLog"
+corpContainerLog :: EVEDB -> FullAPIKey -> CharacterID ->
+                    IO (LowLevelResult [ContainerLogEntry])
+corpContainerLog = standardRequest "corp/ContainerLog" $ parseRows $ \ r -> do
+  lt <-             tread =<< findAttr (unqual "logTime")          r
+  ii <- IID    <$> (mread =<< findAttr (unqual "itemID")           r)
+  it <- TID    <$> (mread =<< findAttr (unqual "itemTypeID")       r)
+  ai <- CharID <$> (mread =<< findAttr (unqual "actorID")          r)
+  an <-                       findAttr (unqual "actorName")        r
+  fl <-             mread =<< findAttr (unqual "flag")             r
+  li <- LocID  <$> (mread =<< findAttr (unqual "locationID")       r)
+  ac <-                       findAttr (unqual "action")           r
+  pt <-                       findAttr (unqual "passwordType")     r
+  let ti = case (findAttr (unqual "typeID") r,findAttr (unqual "quantity") r) of
+             (Just i, Just q) -> do
+                tid <- TID <$> mread i
+                qnt <-         mread q
+                return (tid, qnt) 
+             _                -> Nothing
+  oc <-                       findAttr (unqual "oldConfiguration") r
+  nc <-                       findAttr (unqual "newConfiguration") r
+  return (ContainerLogEntry lt (ii, it) (ai, an) fl li ac pt ti (oc, nc))
 
+{-
 corporationSheet :: APIKey k => k -> CharacterID -> IO LowLevelResult
 corporationSheet = standardRequest "corp/CorporationSheet"
 
