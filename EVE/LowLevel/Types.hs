@@ -6,8 +6,8 @@ import Control.Exception
 import Data.Char
 import Data.List
 import Data.Maybe
-import Data.Time.Clock
-import Data.Time.Format
+import Data.Time.Clock(UTCTime(..))
+import Data.Time.Format()
 import Data.Typeable
 import Text.XML.Light
 
@@ -36,6 +36,7 @@ data EVELowLevelError = ConnectionReset
                       | HTTPParseError String
                       | XMLParseError String
                       | EVEParseError Element
+                      | EVETypeConversionError String
                       | UnknownError String
  deriving (Show, Typeable)
 
@@ -427,7 +428,7 @@ data KillTotals = KillTotals {
 --
 
 data FactionStats = FactionStats {
-    facID                :: FactionID
+    facFactionID         :: FactionID
   , facName              :: String
   , facPilots            :: Integer
   , facSystemsControlled :: Integer
@@ -480,7 +481,7 @@ noAll :: AllianceID
 noAll = AllianceID 0
 
 data Alliance = Alliance {
-    allID         :: AllianceID
+    allAlliaceID  :: AllianceID
   , allName       :: String
   , allShortName  :: String
   , allExecutor   :: CorporationID
@@ -632,7 +633,7 @@ newtype CharacterID      = CharID Integer deriving (Show,Eq)
 data Gender = Male | Female               deriving (Show,Eq)
 
 instance Read Gender where
-  readsPrec d x = case map toLower x of
+  readsPrec _ x = case map toLower x of
                     s | "male"   `isPrefixOf` s -> [(Male,   drop 4 x)]
                       | "female" `isPrefixOf` s -> [(Female, drop 6 x)]
                       | otherwise               -> []
@@ -925,6 +926,7 @@ toOrderState 2 = Expired -- I don't get this
 toOrderState 3 = Cancelled
 toOrderState 4 = Pending
 toOrderState 5 = OrderCharacterDeleted
+toOrderState _ = throw (EVETypeConversionError "toOrderState")
 
 toRange :: Int -> Range 
 toRange  (-1) = RangeStation

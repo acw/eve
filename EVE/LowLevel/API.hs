@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module EVE.LowLevel.API (
          characterList
        , charAccountBalances
@@ -121,7 +122,7 @@ parseItem mlid el = do
   tid <- TID       <$> (mread =<< findAttr (unqual "typeID")     el)
   qnt <-                mread =<< findAttr (unqual "quantity")   el
   flg <- toLocFlag =<< (mread =<< findAttr (unqual "flag")       el)
-  sng <- (== 0)    <$> (mread =<< findAttr (unqual "singleton")  el)
+  sng <- boolify   <$> (mread =<< findAttr (unqual "singleton")  el)
   lid <- case mlid of
            Nothing -> LocID <$> (mread =<< findAttr (unqual "locationID") el)
            Just x  -> return x
@@ -132,7 +133,7 @@ parseItem mlid el = do
                return (res : acc)
            Nothing ->
              return []
-  return (Item iid (lid, flg) tid qnt sng sub)
+  return (Item iid (lid, flg) tid qnt (not sng) sub)
 
 -- |Returns a character's base stats.
 characterSheet :: APIKey k =>
@@ -187,8 +188,8 @@ charFactionalWarfareStats = standardRequest "char/FacWarStats" $ \ x -> do
     kst <- readKillStats x
     return (Just $ CharWarfareStats fid fnm enl crn hrn kst)
   notInvolved x = do
-    err  <- findElement (unqual "error") x
-    code <- mread =<< findAttr (unqual "code") err
+    err             <- findElement (unqual "error") x
+    code :: Integer <- mread =<< findAttr (unqual "code") err
     guard (code == 124)
     return Nothing
 
@@ -231,7 +232,7 @@ readKillLog xml = do
       aaln <-                           findAttr (unqual "allianceName")    ar
       asec <-                 mread =<< findAttr (unqual "securityStatus")  ar
       admg <-                 mread =<< findAttr (unqual "damageDone")      ar
-      afnl <- (== 1)     <$> (mread =<< findAttr (unqual "finalBlow")       ar)
+      afnl <- boolify    <$> (mread =<< findAttr (unqual "finalBlow")       ar)
       awep <- TID        <$> (mread =<< findAttr (unqual "weaponTypeID")    ar)
       ashp <- TID        <$> (mread =<< findAttr (unqual "shipTypeID")      ar)
       let base = (aid, anm, acoi, acon, aall, aaln)
@@ -255,23 +256,23 @@ charMailingLists = standardRequest "char/mailinglists" $ parseRows $ \ r -> do
 charMailMessages :: EVEDB -> FullAPIKey -> CharacterID ->
                     IO [MailMessage]
 charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
-  mid <- MsgID  <$> (mread =<< findAttr (unqual "messageID")          r)
-  sid <- CharID <$> (mread =<< findAttr (unqual "senderID")           r)
-  dat <-             tread =<< findAttr (unqual "sentDate")           r
-  tit <-                       findAttr (unqual "title")              r
-  tco <-                       findAttr (unqual "toCorpOrAllianceID") r
-  tli <-                       findAttr (unqual "toListIDs")          r
-  tch <-                       findAttr (unqual "toCharacterIDs")     r
-  rd  <- (== 1) <$> (mread =<< findAttr (unqual "read")               r)
+  mid <- MsgID   <$> (mread =<< findAttr (unqual "messageID")          r)
+  sid <- CharID  <$> (mread =<< findAttr (unqual "senderID")           r)
+  dat <-              tread =<< findAttr (unqual "sentDate")           r
+  tit <-                        findAttr (unqual "title")              r
+  tco <-                        findAttr (unqual "toCorpOrAllianceID") r
+  tli <-                        findAttr (unqual "toListIDs")          r
+  tch <-                        findAttr (unqual "toCharacterIDs")     r
+  rd  <- boolify <$> (mread =<< findAttr (unqual "read")               r)
   dst <- liftM3 (\ a b c -> a ++ b ++ c)
                 (unwindCommas (ToCorpOrAlliance . CorpID) tco)
                 (unwindCommas (ToCharacter      . CharID) tch)
                 (unwindCommas (ToMailingList    . ListID) tli)
   return (MailMessage mid sid dst dat tit rd)
  where
-  unwindCommas f "" = return []
+  unwindCommas _ "" = return []
   unwindCommas f xs = do let (start,rest) = break (/= ',') xs
-                         rest' <- unwindCommas f (drop 1 xs)
+                         rest' <- unwindCommas f (drop 1 rest)
                          cur   <- f <$> mread start
                          return (cur:rest')
 
@@ -296,7 +297,7 @@ readOrder r = do
               Just x  -> mread x
               Nothing -> Nothing
   pri <-                   mread =<< findAttr (unqual "price")        r
-  bid <- (/= 0)       <$> (mread =<< findAttr (unqual "bid")          r)
+  bid <- boolify      <$> (mread =<< findAttr (unqual "bid")          r)
   iss <-                   tread =<< findAttr (unqual "issued")       r
   return (MarketOrder oid cid sid ovl nvl mvl ost tid rng aky dur esc pri bid iss)
 
@@ -328,7 +329,7 @@ charSkillInTraining :: APIKey k =>
                        EVEDB -> k -> CharacterID -> 
                        IO (Maybe SkillInTraining)
 charSkillInTraining = standardRequest "char/SkillInTraining" $ \ x -> do
-  training <- mread =<< getElementData "skillInTraining" x
+  training :: Integer <- mread =<< getElementData "skillInTraining" x
   if training == 0
     then return Nothing
     else Just <$> parseSIT x
@@ -463,7 +464,7 @@ charNotifications = standardRequest "char/Notifications" $ parseRows $ \ r -> do
   ti <- toNotType =<< (mread =<< findAttr (unqual "typeID")         r)
   si <- CharID    <$> (mread =<< findAttr (unqual "senderID")       r)
   sd <-                tread =<< findAttr (unqual "sentDate")       r
-  rd <- (== 1)    <$> (mread =<< findAttr (unqual "read")           r)
+  rd <- boolify   <$> (mread =<< findAttr (unqual "read")           r)
   return (Notification ni ti si sd rd)
 
 corpAccountBalances :: EVEDB -> FullAPIKey -> CharacterID -> 
@@ -570,8 +571,8 @@ corpFactionalWarfareStats = standardRequest "corp/FacWarStats" $ \ x ->
     kst <- readKillStats x
     return (Just $ CorpWarfareStats fid fnm enl pil kst)
   notInvolved x = do
-    err  <- findElement (unqual "error") x
-    code <- mread =<< findAttr (unqual "code") err
+    err             <- findElement (unqual "error") x
+    code :: Integer <- mread =<< findAttr (unqual "code") err
     guard (code == 125)
     return Nothing
 
@@ -626,7 +627,7 @@ corpMemberSecurity = standardRequest "corp/MemberSecurity" $ \ v -> do
   addRoleEntries f m e = foldElements "row" e m $ \ a r -> do
     i <- RoleID <$> (mread =<< findAttr (unqual "roleID")   r)
     n <-                       findAttr (unqual "roleName") r
-    return (updateVal (RoleID 0) n f a)
+    return (updateVal i n f a)
   runRole el dict (name,flag) = do
     rs <- findElementWithAttName name el
     if null (elChildren rs)
@@ -713,7 +714,7 @@ eveCertificateTree = runRequest "eve/CertificateTree" [] parse
         clID   <- mread =<< findAttr (unqual "classID")   l
         clName <-           findAttr (unqual "className") l
         ceset  <- findChildWithAttName "certificates" l
-        let newAcc' = (cats, CClass (CClassID clID) clName : classes2, certs2)
+        let newAcc' = (cats2, CClass (CClassID clID) clName : classes2, certs2)
         foldChildren "row" ceset newAcc' $ \ (cats3, classes3, certs3) x -> do
           ceID    <- mread =<< findAttr (unqual "certificateID") x
           ceGrade <- mread =<< findAttr (unqual "grade")         x
@@ -799,10 +800,10 @@ eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] parse
  where
   parse xml = do
     chs       <- findElement (unqual "characters")   xml
-    cos       <- findElement (unqual "corporations") xml
+    cps       <- findElement (unqual "corporations") xml
     fas       <- findElement (unqual "factions")     xml
     charStats <- processStats "characterID"   "characterName"   CharID chs
-    corpStats <- processStats "corporationID" "corporationName" CorpID cos
+    corpStats <- processStats "corporationID" "corporationName" CorpID cps
     facStats  <- processStats "factionID"     "factionName"     FacID  fas
     return $ KillStats charStats corpStats facStats
   processStats i n b xml = do
@@ -819,12 +820,11 @@ eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] parse
     vweek' <- toList i n "victoryPoints" b vweek
     vtot'  <- toList i n "victoryPoints" b vtot
     return $ KillList kyest' kweek' ktot' vyest' vweek' vtot'
-  toList :: String -> String -> String -> (Integer -> a) -> Element -> Maybe [(a, String, Integer)]
   toList idAtt nameAtt valAtt builder xml = mapChildren "row" xml $ \ row -> do
-    id    <- builder <$> (mread =<< findAttr (unqual idAtt)   row)
+    gid   <- builder <$> (mread =<< findAttr (unqual idAtt)   row)
     name  <-                        findAttr (unqual nameAtt) row
     val   <-              mread =<< findAttr (unqual valAtt)  row
-    return (id, name, val)
+    return (gid, name, val)
 
 eveIDToName :: [CharacterID] -> EVEDB ->
                IO [(String,CharacterID)]
@@ -866,12 +866,12 @@ eveSkillTree = runRequest "eve/SkillTree" [] parseResults
         foldChildren "row" srows acc $ \ (groups', skills') srow -> do
           sname <-           findAttr (unqual "typeName") srow
           tid   <- mread =<< findAttr (unqual "typeID") srow
-          group <- mread =<< findAttr (unqual "groupID") srow
+          grp   <- mread =<< findAttr (unqual "groupID") srow
           desc  <-           getChildData "description" srow
           rank  <- mread =<< getChildData "rank" srow
           pri   <- mread =<< getElementData "primaryAttribute" srow
           sec   <- mread =<< getElementData "secondaryAttribute" srow
-          unless (group == gid) $ fail "group is not equal to id!"
+          unless (grp == gid) $ fail "group is not equal to id!"
           rreqs <- findChildWithAttName "requiredSkills" srow
           reqs  <- mapChildren "row" rreqs $ \ req -> do
                      reqtid <- mread =<< findAttr (unqual "typeID") req
@@ -885,7 +885,7 @@ eveSkillTree = runRequest "eve/SkillTree" [] parseResults
           let (reqs',bons') = parseBonuses bons
               skill         = Skill {
                                 skillName         = sname
-                              , skillGroup        = SkillGroupID group
+                              , skillGroup        = SkillGroupID grp
                               , skillID           = SkillID tid
                               , skillDescription  = desc
                               , skillRank         = rank
@@ -915,9 +915,9 @@ mapJumps :: EVEDB -> IO [(Integer, Integer)]
 mapJumps = runRequest "map/Jumps" [] $ parseRows readRow
  where
   readRow row = do
-    id     <- mread =<< findAttr (unqual "solarSystemID") row
+    sid    <- mread =<< findAttr (unqual "solarSystemID") row
     jumps  <- mread =<< findAttr (unqual "shipJumps") row
-    return (id, jumps)
+    return (sid, jumps)
 
 -- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
 mapKills :: EVEDB -> IO [(Integer, Integer, Integer, Integer)]
@@ -925,18 +925,18 @@ mapKills = runRequest "map/Kills" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe (Integer, Integer, Integer, Integer)
   readRow row = do
-    id     <- mread =<< findAttr (unqual "solarSystemID") row
+    sid    <- mread =<< findAttr (unqual "solarSystemID") row
     shipKs <- mread =<< findAttr (unqual "shipKills")     row
     facKs  <- mread =<< findAttr (unqual "factionKills")  row
     podKs  <- mread =<< findAttr (unqual "podKills")      row
-    return (id, shipKs, facKs, podKs)
+    return (sid, shipKs, facKs, podKs)
 
 mapSovereignty :: EVEDB -> IO [SolarSystem]
 mapSovereignty = runRequest "map/Sovereignty" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe SolarSystem
   readRow row = do
-    id     <- SSID       <$> (mread =<< findAttr (unqual "solarSystemID")   row)
+    sid    <- SSID       <$> (mread =<< findAttr (unqual "solarSystemID")   row)
     name   <-           findAttr (unqual "solarSystemName") row
     aliID  <- AllianceID <$> (mread =<< findAttr (unqual "allianceID")      row)
     corID  <- CorpID     <$> (mread =<< findAttr (unqual "corporationID")   row)
@@ -945,7 +945,7 @@ mapSovereignty = runRequest "map/Sovereignty" [] $ parseRows readRow
         list1 = if aliID == noAll  then list0 else (OwnerAlliance aliID : list0)
         list2 = if corID == noCorp then list1 else (OwnerCorp     corID : list1)
         list3 = if facID == noFac  then list2 else (OwnerFaction  facID : list2)
-    return $ SolarSystem id name list3
+    return $ SolarSystem sid name list3
 
 serverStatus :: EVEDB -> IO (Bool, Integer)
 serverStatus = runRequest "server/ServerStatus" [] pullResult
@@ -968,6 +968,11 @@ mread = fmap fst . listToMaybe . reads
 
 tread :: ParseTime t => String -> Maybe t
 tread = fmap fst . listToMaybe . readsTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
+
+boolify :: Integer -> Bool
+boolify 0 = False
+boolify 1 = True
+boolify _ = throw (EVETypeConversionError "boolify")
 
 parseRows :: (Element -> Maybe a) -> Element -> Maybe [a]
 parseRows f xml = sequence $ map f $ findElements (unqual "row") xml
@@ -1007,7 +1012,7 @@ runRequest :: String -> [(String, String)] ->
               (Element -> Maybe a) ->
               EVEDB -> IO a
 runRequest procedure args finishProcessing db =
-  lookupCachedOrDo db reqHash parseResult runRequest
+  lookupCachedOrDo db reqHash parseResult runRequest'
  where
   parseResult str =
     case parseXMLDoc str of
@@ -1016,7 +1021,7 @@ runRequest procedure args finishProcessing db =
                    Just result -> result
                    Nothing     -> throw (EVEParseError r)
   --
-  runRequest = do
+  runRequest' = do
     res <- simpleHTTP req
     case res of
       Left ErrorReset     -> throwIO  ConnectionReset
@@ -1024,13 +1029,13 @@ runRequest procedure args finishProcessing db =
       Left (ErrorParse x) -> throwIO (HTTPParseError x)
       Left (ErrorMisc  x) -> throwIO (UnknownError x)
       Right resp          -> do
-        let body = rspBody resp
-        case parseXMLDoc body of
-          Nothing         -> throwIO  (XMLParseError body)
+        let bod = rspBody resp
+        case parseXMLDoc bod of
+          Nothing         -> throwIO  (XMLParseError bod)
           Just xml        -> do
             let expireTime = cachedUntil xml
                 mresult    = finishProcessing xml
-            addCachedResponse db reqHash body expireTime
+            addCachedResponse db reqHash bod expireTime
             case mresult of
               Just result -> return result
               Nothing     -> throwIO (EVEParseError xml)
@@ -1044,5 +1049,5 @@ runRequest procedure args finishProcessing db =
 
 getElementStringContent :: String -> Element -> Maybe String
 getElementStringContent name xml = do
-  elem <- findElement (unqual name) xml
-  return $ strContent elem
+  el <- findElement (unqual name) xml
+  return $ strContent el

@@ -12,7 +12,6 @@ module EVE.LowLevel.DB(
 
 import Codec.Compression.BZip
 import Control.Concurrent
-import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad
 import Data.ByteString.Lazy(ByteString)
@@ -21,7 +20,6 @@ import Data.List
 import Data.Time
 import Data.Typeable
 import Database.SQLite
-import Foreign.Ptr
 import Network.HTTP
 import Network.URI
 import System.Directory
@@ -74,10 +72,10 @@ additionalTableNames = map tabName additionalTables
 -- If there is a problem opening the database, this function will throw
 -- an EVEDatabaseError or a SQLite exception..
 openEVEDB :: FilePath -> IO EVEDB
-openEVEDB path = do
-  fileExists <- doesFileExist path
-  unless fileExists $ downloadBaseDB path
-  conn <- openConnection path
+openEVEDB loc = do
+  fileExists <- doesFileExist loc
+  unless fileExists $ downloadBaseDB loc
+  conn <- openConnection loc
   res  <- execStatement conn getAllTables
   case res of
     Left err -> throwIO (EVEDatabaseError err)
@@ -116,8 +114,9 @@ lookupCachedOrDo :: EVEDB -> String -> (String -> a) -> (IO a) -> IO a
 lookupCachedOrDo db hash ifHave ifDont = do
   useCache <- readMVar $ cacheOn db
   if useCache
-    then do res <- execStatement (dbase db) (lookupCachedItem hash)
-            case res of
+    then do _    <- execStatement_ (dbase db) deleteStaleCache
+            mres <- execStatement  (dbase db) (lookupCachedItem hash)
+            case mres of
               Left _                     -> ifDont
               Right [[("result",res):_]] -> do putStrLn "Using cache!"
                                                return $ ifHave res
@@ -126,7 +125,8 @@ lookupCachedOrDo db hash ifHave ifDont = do
 
 addCachedResponse :: EVEDB -> String -> String -> UTCTime -> IO ()
 addCachedResponse db hash response expire = do
-  res <- execStatement_ (dbase db) (cacheItem hash response' formattedExpire)
+  ignoreReturn `fmap` execStatement_ (dbase db)
+                        (cacheItem hash response' formattedExpire)
   ignoreReturn `fmap` execStatement_ (dbase db) "END TRANSACTION"
  where
   formattedExpire = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" expire
@@ -164,7 +164,7 @@ deleteStaleCache = intercalate " " [
   ]
 
 cacheItem :: String -> String -> String -> String
-cacheItem req rsp exp = intercalate " " [
+cacheItem req rsp expire = intercalate " " [
    "INSERT OR REPLACE INTO Cache(request,result,expireTime) VALUES"
-  ,"   ('"++req++"', '"++rsp++"', '"++exp++"');"
+  ,"   ('"++req++"', '"++rsp++"', '"++expire++"');"
   ]
