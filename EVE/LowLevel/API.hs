@@ -1,12 +1,10 @@
-module EVE.LowLevel.API
-{-
-       (
+module EVE.LowLevel.API (
          characterList
        , charAccountBalances
        , charAssetList
        , characterSheet
        , charFactionalWarfareStats
-       , charIndustryJobs
+--       , charIndustryJobs
        , charKillLogs
        , charMailingLists
        , charMailMessages
@@ -24,19 +22,19 @@ module EVE.LowLevel.API
        , charCorporationSheet
        , corporationSheet
        , corpFactionalWarfareStats
-       , corpIndustryJobs
+--       , corpIndustryJobs
        , corpKillLogs
        , corpMarketOrders
        , corpMedals
        , corpMemberMedals
        , corpMemberSecurity
-       , corpMemberSecurityLog
-       , corpMemberTracking
-       , corpPOSDetails
-       , corpPOSList
-       , corpShareholders
-       , corpStandings
-       , corpTitles
+--       , corpMemberSecurityLog
+--       , corpMemberTracking
+--       , corpPOSDetails
+--       , corpPOSList
+--       , corpShareholders
+--       , corpStandings
+--       , corpTitles
        , corpWalletJournal
        , corpWalletTransactions
        , eveAllianceList
@@ -55,10 +53,10 @@ module EVE.LowLevel.API
        , mapSovereignty
        , serverStatus
        )
--}
  where
 
 import Control.Applicative
+import Control.Exception
 import Control.Monad
 import qualified Data.ByteString.Lazy.Char8 as BSC
 import Data.Digest.Pure.SHA
@@ -83,8 +81,11 @@ import EVE.LowLevel.Types
 -- http://wiki.eve-id.net/APIv2_Page_Index#Notes
 -- is a very helpful page
 
+-- |Return a list of the characters associated with the given API Key as a
+-- a quadruple containing the character's name, ID, corporation name, and
+-- corporation ID.
 characterList :: APIKey k => k -> EVEDB ->
-                 IO (LowLevelResult [(String,CharacterID,String,CorporationID)])
+                 IO [(String,CharacterID,String,CorporationID)]
 characterList k =
  runRequest "account/Characters" (keyToArgs k) $ parseRows $ \ r -> do
   name <-                       findAttr (unqual "name")            r
@@ -93,19 +94,21 @@ characterList k =
   corp <- CorpID <$> (mread =<< findAttr (unqual "corporationID")   r)
   return (name, char, cnam, corp)
 
+-- |Returns a list of the chracter's account balances as tuples containing
+-- the account's ID and its current balance.
 charAccountBalances :: EVEDB -> FullAPIKey -> CharacterID ->
-                       IO (LowLevelResult [(AccountID, Double)])
+                       IO [(AccountID, Double)]
 charAccountBalances =
  standardRequest "char/AccountBalance" $ parseRows $ \ r -> do
   accountID <- AccID <$> (mread =<< findAttr (unqual "accountID") r)
   amount    <-            mread =<< findAttr (unqual "balance")   r
   return (accountID, amount)
 
+-- |Returns a complete list of the character's assets.
 charAssetList :: EVEDB -> FullAPIKey -> CharacterID ->
-                 IO (LowLevelResult [Item])
+                 IO [Item]
 charAssetList =
- extendedRequest [("version", "2")] "char/AssetList" $ \ x ->
-  maybe (Left $ EVEParseError x) Right $ do
+ extendedRequest [("version", "2")] "char/AssetList" $ \ x -> do
    rs0 <- findElement (unqual "result") x
    rs1 <- findChild   (unqual "rowset") rs0
    foldChildren "row" rs1 [] $ \ acc cur -> do
@@ -131,11 +134,11 @@ parseItem mlid el = do
              return []
   return (Item iid (lid, flg) tid qnt sng sub)
 
+-- |Returns a character's base stats.
 characterSheet :: APIKey k =>
                   EVEDB -> k -> CharacterID ->
-                  IO (LowLevelResult Character)
-characterSheet = standardRequest "char/CharacterSheet" $ \ x ->
- maybe (Left $ EVEParseError x) Right $ do
+                  IO Character
+characterSheet = standardRequest "char/CharacterSheet" $ \ x -> do
   cid <- CharID <$> (mread =<< getElementData "characterID"     x)
   nm  <-                       getElementData "name"            x
   rc  <-                       getElementData "race"            x
@@ -171,9 +174,9 @@ characterSheet = standardRequest "char/CharacterSheet" $ \ x ->
 
 charFactionalWarfareStats :: APIKey k => 
                              EVEDB -> k -> CharacterID ->
-                             IO (LowLevelResult (Maybe CharWarfareStats))
-charFactionalWarfareStats = standardRequest "char/FacWarStats" $ \ x ->
-  maybe (Left $ EVEParseError x) Right $ actualData x <|> notInvolved x
+                             IO (Maybe CharWarfareStats)
+charFactionalWarfareStats = standardRequest "char/FacWarStats" $ \ x -> do
+  actualData x <|> notInvolved x
  where
   actualData x = do
     fid <- FacID <$> (mread =<< getElementData "factionID"   x)
@@ -198,9 +201,8 @@ charIndustryJobs = standardRequest "char/IndustryJobs" $ parseRows $ \ r -> do
 -}
 
 charKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
-                IO (LowLevelResult [Kill])
-charKillLogs = walkableRequest "char/Killlog" "beforeKillID" $ \ xml ->
- maybe (Left $ EVEParseError xml) Right $ readKillLog xml
+                IO [Kill]
+charKillLogs = walkableRequest "char/Killlog" "beforeKillID" readKillLog
 
 readKillLog :: Element -> Maybe [Kill]
 readKillLog xml = do
@@ -244,14 +246,14 @@ readKillLog xml = do
     return $ Kill kid ktm kloc victim vpnt vshp att itm
 
 charMailingLists :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO (LowLevelResult [(ListID, String)])
+                    IO [(ListID, String)]
 charMailingLists = standardRequest "char/mailinglists" $ parseRows $ \ r -> do
   lid <- ListID <$> (mread =<< findAttr (unqual "listID")      r)
   nam <-                       findAttr (unqual "displayName") r
   return (lid, nam)
 
 charMailMessages :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO (LowLevelResult [MailMessage])
+                    IO [MailMessage]
 charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
   mid <- MsgID  <$> (mread =<< findAttr (unqual "messageID")          r)
   sid <- CharID <$> (mread =<< findAttr (unqual "senderID")           r)
@@ -274,7 +276,7 @@ charMailMessages = standardRequest "char/MailMessages" $ parseRows $ \ r -> do
                          return (cur:rest')
 
 charMarketOrders :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO (LowLevelResult [MarketOrder])
+                    IO [MarketOrder]
 charMarketOrders = standardRequest "char/MarketOrders" $ parseRows readOrder
 
 readOrder :: Element -> Maybe MarketOrder
@@ -299,10 +301,9 @@ readOrder r = do
   return (MarketOrder oid cid sid ovl nvl mvl ost tid rng aky dur esc pri bid iss)
 
 charMedals :: APIKey k => EVEDB -> k -> CharacterID ->
-              IO (LowLevelResult ([MedalAward ()],
-                                  [MedalAward (CorporationID, String, String)]))
-charMedals = standardRequest "char/Medals" $ \ x ->
- maybe (Left $ EVEParseError x) Right $ do
+              IO ([MedalAward ()],
+                  [MedalAward (CorporationID, String, String)])
+charMedals = standardRequest "char/Medals" $ \ x -> do
   curs <- findElementWithAttName "currentCorporation" x
   oths <- findElementWithAttName "otherCorporations"  x
   mc   <- mapChildren "row" curs parseBaseMedal
@@ -325,9 +326,8 @@ parseBaseMedal r = do
 
 charSkillInTraining :: APIKey k => 
                        EVEDB -> k -> CharacterID -> 
-                       IO (LowLevelResult (Maybe SkillInTraining))
+                       IO (Maybe SkillInTraining)
 charSkillInTraining = standardRequest "char/SkillInTraining" $ \ x -> do
- maybe (Left $ EVEParseError x) Right $ do
   training <- mread =<< getElementData "skillInTraining" x
   if training == 0
     then return Nothing
@@ -344,9 +344,8 @@ charSkillInTraining = standardRequest "char/SkillInTraining" $ \ x -> do
 
 charSkillQueue :: APIKey k => 
                   EVEDB -> k -> CharacterID ->
-                  IO (LowLevelResult [SkillInTraining])
+                  IO [SkillInTraining]
 charSkillQueue = standardRequest "char/SkillQueue" $ \ x -> do
- maybe (Left $ EVEParseError x) Right $ do
   rows <- sequence $ map parseSQRow $ findElements (unqual "row") x
   return (map snd (sortBy comp rows))
  where
@@ -365,11 +364,10 @@ charSkillQueue = standardRequest "char/SkillQueue" $ \ x -> do
 
 charStandings :: APIKey k =>
                  EVEDB -> k -> CharacterID ->
-                 IO (LowLevelResult ([Standing CharacterID],
-                                     [Standing CorporationID],
-                                     [Standing FactionID]))
+                 IO ([Standing CharacterID],
+                     [Standing CorporationID],
+                     [Standing FactionID])
 charStandings = standardRequest "char/Standings" $ \ x -> do
- maybe (Left $ EVEParseError x) Right $ do
   standsTo   <- findElement (unqual "standingsTo")       x
   standsFrom <- findElement (unqual "standingsFrom")     x
   charsTo    <- findElementWithAttName "characters"      standsTo
@@ -393,11 +391,11 @@ charStandings = standardRequest "char/Standings" $ \ x -> do
   for = flip map
 
 charWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID -> IO
-                     (LowLevelResult [WalletJournalEntry])
+                     [WalletJournalEntry]
 charWalletJournal =
   walkableRequest "char/WalletJournal" "beforeRefID" parseWalletJournal
 
-parseWalletJournal :: Element -> LowLevelResult [WalletJournalEntry]
+parseWalletJournal :: Element -> Maybe [WalletJournalEntry]
 parseWalletJournal = parseRows $ \ r -> do
     dat <-             tread =<< findAttr (unqual "date")          r
     ref <- RID    <$> (mread =<< findAttr (unqual "refID")         r)
@@ -438,12 +436,12 @@ parseWalletJournal = parseRows $ \ r -> do
                                amt bal txi ext)
 
 charWalletTransactions :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
-                          IO (LowLevelResult [WalletTransaction])
+                          IO [WalletTransaction]
 charWalletTransactions =
  walkableRequest "char/WalletTransactions" "beforeTransID" parseWalletTrans
 
-parseWalletTrans :: Element -> LowLevelResult [WalletTransaction]
-parseWalletTrans = parseRows $ \r -> do
+parseWalletTrans :: Element -> Maybe [WalletTransaction]
+parseWalletTrans = parseRows $ \ r -> do
   td <-             tread =<< findAttr (unqual "transactionDateTime") r
   ti <- RID    <$> (mread =<< findAttr (unqual "transactionID")       r)
   qn <-             mread =<< findAttr (unqual "quantity")            r
@@ -459,7 +457,7 @@ parseWalletTrans = parseRows $ \r -> do
   return (WalletTransaction td ti qn (oi, on) pr (ci, cn) (si, sn) tt tf)
 
 charNotifications :: EVEDB -> FullAPIKey -> CharacterID -> 
-                     IO (LowLevelResult [Notification])
+                     IO [Notification]
 charNotifications = standardRequest "char/Notifications" $ parseRows $ \ r -> do
   ni <- NotID     <$> (mread =<< findAttr (unqual "notificationID") r)
   ti <- toNotType =<< (mread =<< findAttr (unqual "typeID")         r)
@@ -469,7 +467,7 @@ charNotifications = standardRequest "char/Notifications" $ parseRows $ \ r -> do
   return (Notification ni ti si sd rd)
 
 corpAccountBalances :: EVEDB -> FullAPIKey -> CharacterID -> 
-                       IO (LowLevelResult [(AccountID, Integer, Double)])
+                       IO [(AccountID, Integer, Double)]
 corpAccountBalances = 
  standardRequest "corp/AccountBalance" $ parseRows $ \ r -> do
   accountID <- AccID <$> (mread =<< findAttr (unqual "accountID")  r)
@@ -478,10 +476,9 @@ corpAccountBalances =
   return (accountID, accKey, amount)
 
 corpAssetList :: EVEDB -> FullAPIKey -> CharacterID -> 
-                 IO (LowLevelResult [Item])
+                 IO [Item]
 corpAssetList = 
- extendedRequest [("version", "2")] "corp/AssetList" $ \ x ->
-  maybe (Left $ EVEParseError x) Right $ do
+ extendedRequest [("version", "2")] "corp/AssetList" $ \ x -> do
    rs0 <- findElement (unqual "result") x
    rs1 <- findChild   (unqual "rowset") rs0
    foldChildren "row" rs1 [] $ \ acc cur -> do
@@ -489,7 +486,7 @@ corpAssetList =
      return (res : acc)
 
 corpContainerLog :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO (LowLevelResult [ContainerLogEntry])
+                    IO [ContainerLogEntry]
 corpContainerLog = standardRequest "corp/ContainerLog" $ parseRows $ \ r -> do
   lt <-             tread =<< findAttr (unqual "logTime")          r
   ii <- IID    <$> (mread =<< findAttr (unqual "itemID")           r)
@@ -512,19 +509,16 @@ corpContainerLog = standardRequest "corp/ContainerLog" $ parseRows $ \ r -> do
 
 charCorporationSheet :: APIKey k => 
                         EVEDB -> k -> CharacterID ->
-                        IO (LowLevelResult Corporation)
-charCorporationSheet = standardRequest "corp/CorporationSheet" $ \ x ->
- maybe (Left $ EVEParseError x) Right $ parseCorporationSheet x
+                        IO Corporation
+charCorporationSheet = standardRequest "corp/CorporationSheet" parseCorpSheet
 
-corporationSheet :: EVEDB -> CorporationID -> IO (LowLevelResult Corporation)
+corporationSheet :: EVEDB -> CorporationID -> IO Corporation
 corporationSheet db (CorpID cid) =
   runRequest "corp/CorporationSheet" [("corporationID", show cid)]
-             (\ x ->
-               maybe (Left $ EVEParseError x) Right $ parseCorporationSheet x)
-             db
+             parseCorpSheet db
 
-parseCorporationSheet :: Element -> Maybe Corporation
-parseCorporationSheet x = do
+parseCorpSheet :: Element -> Maybe Corporation
+parseCorpSheet x = do
   ci <- CorpID     <$> (mread =<< getElementData "corporationID"   x)
   cn <-                           getElementData "corporationName" x
   tk <-                           getElementData "ticker"          x
@@ -564,9 +558,9 @@ parseCorporationSheet x = do
 
 corpFactionalWarfareStats :: APIKey k =>
                              EVEDB -> k -> CharacterID ->
-                             IO (LowLevelResult (Maybe CorpWarfareStats))
+                             IO (Maybe CorpWarfareStats)
 corpFactionalWarfareStats = standardRequest "corp/FacWarStats" $ \ x ->
-  maybe (Left $ EVEParseError x) Right $ actualData x <|> notInvolved x
+  actualData x <|> notInvolved x
  where
   actualData x = do
     fid <- FacID <$> (mread =<< getElementData "factionID"   x)
@@ -588,17 +582,17 @@ corpIndustryJobs = standardRequest "corp/IndustryJobs"
 -}
 
 corpKillLogs :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID -> 
-                IO (LowLevelResult [Kill])
+                IO [Kill]
 corpKillLogs = walkableRequest "corp/Killlog" "beforeKillID" $ \ xml ->
- maybe (Left $ EVEParseError xml) Right $ readKillLog xml
+ readKillLog xml
 
 corpMarketOrders :: EVEDB -> FullAPIKey -> CharacterID ->
-                    IO (LowLevelResult [MarketOrder])
+                    IO [MarketOrder]
 corpMarketOrders = standardRequest "corp/MarketOrders" $ parseRows readOrder
 
 corpMedals :: APIKey k =>
               EVEDB -> k -> CharacterID ->
-              IO (LowLevelResult [Medal])
+              IO [Medal]
 corpMedals = standardRequest "corp/Medals" $ parseRows $ \ r -> do
   mid <- MedalID <$> (mread =<< findAttr (unqual "medalID")     r)
   ttl <-                        findAttr (unqual "title")       r
@@ -609,14 +603,14 @@ corpMedals = standardRequest "corp/Medals" $ parseRows $ \ r -> do
 
 corpMemberMedals :: APIKey k =>
                     EVEDB -> k -> CharacterID ->
-                    IO (LowLevelResult [MedalAward ()])
+                    IO [MedalAward ()]
 corpMemberMedals =
  standardRequest "corp/MemberMedals" $ parseRows parseBaseMedal
 
 corpMemberSecurity :: EVEDB -> FullAPIKey -> CharacterID -> 
-                      IO (LowLevelResult [CorpMemberSecurity])
-corpMemberSecurity = standardRequest "corp/MemberSecurity" $ \ v ->
- maybe (Left $ EVEParseError v) Right $ mapElements "member" v $ \ x -> do
+                      IO [CorpMemberSecurity]
+corpMemberSecurity = standardRequest "corp/MemberSecurity" $ \ v -> do
+  mapElements "member" v $ \ x -> do
    chi <- CharID <$> (mread =<< findAttr (unqual "characterID") x)
    chn <-                       findAttr (unqual "name")        x
    tls <- do rs <- findElementWithAttName "titles" x
@@ -649,7 +643,7 @@ corpMemberSecurity = standardRequest "corp/MemberSecurity" $ \ v ->
             ]
 
 {-
-corpMemberSecurityLog :: FullAPIKey -> CharacterID -> IO LowLevelResult
+corpMemberSecurityLog :: FullAPIKey -> CharacterID -> IOLowLevelResult
 corpMemberSecurityLog = standardRequest "corp/MemberSecurityLog"
 
 corpMemberTracking :: FullAPIKey -> CharacterID -> IO LowLevelResult
@@ -675,19 +669,19 @@ corpTitles = standardRequest "corp/Titles"
 -}
 
 corpWalletJournal :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
-                     IO (LowLevelResult [WalletJournalEntry])
+                     IO [WalletJournalEntry]
 corpWalletJournal = 
   walkableRequest "corp/WalletJournal" "beforeRefID" parseWalletJournal
 
 corpWalletTransactions :: EVEDB -> FullAPIKey -> CharacterID -> Maybe RefID ->
-                          IO (LowLevelResult [WalletTransaction])
-corpWalletTransactions = 
+                          IO [WalletTransaction]
+corpWalletTransactions =
   walkableRequest "corp/WalletTransactions" "beforeTransID" parseWalletTrans
 
-eveAllianceList :: EVEDB -> IO (LowLevelResult [Alliance])
+eveAllianceList :: EVEDB -> IO [Alliance]
 eveAllianceList = runRequest "eve/AllianceList" [] parse
  where
-  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+  parse xml = do
     rows <- findElementWithAttName "alliances" xml
     mapChildren "row" rows $ \ r -> do
       name  <-                           findAttr (unqual "name")           r
@@ -703,12 +697,12 @@ eveAllianceList = runRequest "eve/AllianceList" [] parse
                  return (CorpID c, d)
       return (Alliance allID name sname exeID cnt start mems)
 
-eveCertificateTree :: EVEDB -> IO (LowLevelResult ([CertificateCategory],
-                                                   [CertificateClass],
-                                                   [Certificate]))
+eveCertificateTree :: EVEDB -> IO ([CertificateCategory],
+                                   [CertificateClass],
+                                   [Certificate])
 eveCertificateTree = runRequest "eve/CertificateTree" [] parse
  where
-  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+  parse xml = do
     rows <- findElementWithAttName "categories" xml
     foldChildren "row" rows ([],[],[]) $ \ (cats, classes, certs) c -> do
       catID <- CCatID <$> (mread =<< findAttr (unqual "categoryID")   c)
@@ -744,7 +738,7 @@ eveCertificateTree = runRequest "eve/CertificateTree" [] parse
                                     (sreqs ++ creqs)
           return (cats3, classes3, newCert : certs3)
 
-eveConquerableStationList :: EVEDB -> IO (LowLevelResult [ConquerableStation])
+eveConquerableStationList :: EVEDB -> IO [ConquerableStation]
 eveConquerableStationList =
   runRequest "eve/ConquerableStationList" [] $ parseRows $ \ r -> do
     sID <- StatID <$> (mread =<< findAttr (unqual "stationID")       r)
@@ -755,7 +749,7 @@ eveConquerableStationList =
     cNm <-                       findAttr (unqual "corporationName") r
     return (CStat sID sNm sTp sSS cID cNm)
 
-eveErrorList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
+eveErrorList :: EVEDB -> IO [(Integer,String)]
 eveErrorList = runRequest "eve/ErrorList" [] $ parseRows $ \ r -> do
   code <- mread =<< findAttr (unqual "errorCode") r
   str  <-           findAttr (unqual "errorText") r
@@ -772,10 +766,10 @@ readKillStats xml = do
   return (KillTotals kyest kweek ktot vyest vweek vtot)
 
 eveFactionalWarfareStats :: EVEDB ->
-                            IO (LowLevelResult (KillTotals, [FactionStats]))
+                            IO (KillTotals, [FactionStats])
 eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] parse
  where
-  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+  parse xml = do
     facs  <-    findElementWithAttName "factions"               xml
     facws <-    findElementWithAttName "factionWars"            xml
     totals <- readKillStats xml
@@ -800,10 +794,10 @@ eveFactionalWarfareStats = runRequest "eve/FacWarStats" [] parse
                return $ FactionStats facID facn pils sc kills enms : acc
     return (totals, stats)
 
-eveFactionalWarfareTop100 :: EVEDB -> IO (LowLevelResult KillStats)
+eveFactionalWarfareTop100 :: EVEDB -> IO KillStats
 eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] parse
  where
-  parse xml = maybe (Left $ EVEParseError xml) Right $ do
+  parse xml = do
     chs       <- findElement (unqual "characters")   xml
     cos       <- findElement (unqual "corporations") xml
     fas       <- findElement (unqual "factions")     xml
@@ -833,24 +827,24 @@ eveFactionalWarfareTop100 = runRequest "eve/FacWarTopStats" [] parse
     return (id, name, val)
 
 eveIDToName :: [CharacterID] -> EVEDB ->
-               IO (LowLevelResult [(String,CharacterID)])
+               IO [(String,CharacterID)]
 eveIDToName ids =
   runRequest "eve/CharacterName" [("Ids",ids')] readNameIDs
  where ids' = intercalate "," $ map (\ (CharID x) -> show x) ids
 
 eveNameToID :: [String] -> EVEDB -> 
-               IO (LowLevelResult [(String,CharacterID)])
+               IO [(String,CharacterID)]
 eveNameToID names =
   runRequest "eve/CharacterID" [("names",names')] readNameIDs
  where names'    = intercalate "," names
 
-readNameIDs :: Element -> LowLevelResult [(String,CharacterID)]
+readNameIDs :: Element -> Maybe [(String,CharacterID)]
 readNameIDs = parseRows $ \ r -> do
   name <-           findAttr (unqual "name")        r
   cid  <- mread =<< findAttr (unqual "characterID") r
   return (name, CharID cid)
 
-eveRefTypesList :: EVEDB -> IO (LowLevelResult [(Integer,String)])
+eveRefTypesList :: EVEDB -> IO [(Integer,String)]
 eveRefTypesList = runRequest "eve/RefTypes" [] $ parseRows readRow
  where
   readRow r = do
@@ -858,11 +852,11 @@ eveRefTypesList = runRequest "eve/RefTypes" [] $ parseRows readRow
     refname <-           findAttr (unqual "refTypeName") r
     return (refid, refname)
 
-eveSkillTree :: EVEDB -> IO (LowLevelResult ([SkillGroup], [Skill]))
+eveSkillTree :: EVEDB -> IO ([SkillGroup], [Skill])
 eveSkillTree = runRequest "eve/SkillTree" [] parseResults
  where
-  parseResults :: Element -> LowLevelResult ([SkillGroup], [Skill])
-  parseResults xml = maybe (Left $ EVEParseError xml) Right $ do
+  parseResults :: Element -> Maybe ([SkillGroup], [Skill])
+  parseResults xml = do
     rows <- findElementWithAttName "skillGroups" xml
     foldChildren "row" rows ([],[]) $ \ (groups,skills) grow -> do
       name <- findAttr (unqual "groupName") grow
@@ -903,7 +897,7 @@ eveSkillTree = runRequest "eve/SkillTree" [] parseResults
           return (groups', skill : skills')
 
 mapFactionalWarfareOccupancyMap
-  :: EVEDB -> IO (LowLevelResult [(Integer, String, Integer, String, Bool)])
+  :: EVEDB -> IO [(Integer, String, Integer, String, Bool)]
 mapFactionalWarfareOccupancyMap =
   runRequest "map/FacWarSystems" [] $ parseRows readRow
  where
@@ -917,7 +911,7 @@ mapFactionalWarfareOccupancyMap =
 
 -- |Returns a list (solarSystemID, numJumps). Note that there may not be an
 -- entry in the returned list if numJumps = 0.
-mapJumps :: EVEDB -> IO (LowLevelResult [(Integer, Integer)])
+mapJumps :: EVEDB -> IO [(Integer, Integer)]
 mapJumps = runRequest "map/Jumps" [] $ parseRows readRow
  where
   readRow row = do
@@ -926,7 +920,7 @@ mapJumps = runRequest "map/Jumps" [] $ parseRows readRow
     return (id, jumps)
 
 -- |Returns a list (solarSystemID, shipKills, factionKills, podKills)
-mapKills :: EVEDB -> IO (LowLevelResult [(Integer, Integer, Integer, Integer)])
+mapKills :: EVEDB -> IO [(Integer, Integer, Integer, Integer)]
 mapKills = runRequest "map/Kills" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe (Integer, Integer, Integer, Integer)
@@ -937,7 +931,7 @@ mapKills = runRequest "map/Kills" [] $ parseRows readRow
     podKs  <- mread =<< findAttr (unqual "podKills")      row
     return (id, shipKs, facKs, podKs)
 
-mapSovereignty :: EVEDB -> IO (LowLevelResult [SolarSystem])
+mapSovereignty :: EVEDB -> IO [SolarSystem]
 mapSovereignty = runRequest "map/Sovereignty" [] $ parseRows readRow
  where
   readRow :: Element -> Maybe SolarSystem
@@ -953,13 +947,13 @@ mapSovereignty = runRequest "map/Sovereignty" [] $ parseRows readRow
         list3 = if facID == noFac  then list2 else (OwnerFaction  facID : list2)
     return $ SolarSystem id name list3
 
-serverStatus :: EVEDB -> IO (LowLevelResult (Bool, Integer))
+serverStatus :: EVEDB -> IO (Bool, Integer)
 serverStatus = runRequest "server/ServerStatus" [] pullResult
  where
-  pullResult xml = fromMaybe (Left $ EVEParseError xml) $ do
+  pullResult xml = do
     open    <- mread =<< getElementStringContent "serverOpen" xml
     players <- mread =<< getElementStringContent "onlinePlayers" xml
-    return $ Right (open, players)
+    return (open, players)
 
 cachedUntil :: Element -> UTCTime
 cachedUntil xml = fromMaybe zeroHour $ do
@@ -975,9 +969,8 @@ mread = fmap fst . listToMaybe . reads
 tread :: ParseTime t => String -> Maybe t
 tread = fmap fst . listToMaybe . readsTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
 
-parseRows :: (Element -> Maybe a) -> Element -> LowLevelResult [a]
-parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows
- where rows = findElements (unqual "row") xml
+parseRows :: (Element -> Maybe a) -> Element -> Maybe [a]
+parseRows f xml = sequence $ map f $ findElements (unqual "row") xml
 
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
@@ -985,9 +978,9 @@ parseRows f xml = maybe (Left $ EVEParseError xml) Right $ sequence $ map f rows
 
 walkableRequest :: APIKey k =>
                    String -> String ->
-                   (Element -> LowLevelResult a) ->
+                   (Element -> Maybe a) ->
                    EVEDB -> k -> CharacterID -> Maybe RefID ->
-                   IO (LowLevelResult a)
+                   IO a
 walkableRequest proc name finish db k c ref =
   extendedRequest extra proc finish db k c
  where extra = case ref of
@@ -995,48 +988,52 @@ walkableRequest proc name finish db k c ref =
                  Just (RID rid) -> [(name, show rid)]
 
 standardRequest :: APIKey k =>
-                   String -> (Element -> LowLevelResult a) ->
+                   String -> (Element -> Maybe a) ->
                    EVEDB -> k -> CharacterID ->
-                   IO (LowLevelResult a)
+                   IO a
 standardRequest = extendedRequest []
 
 extendedRequest :: APIKey k =>
                    [(String, String)] -> String ->
-                   (Element -> LowLevelResult a) ->
+                   (Element -> Maybe a) ->
                    EVEDB -> k -> CharacterID ->
-                   IO (LowLevelResult a)
+                   IO a
 extendedRequest extras proc finish db key (CharID cid) =
   runRequest proc args finish db
  where args = keyToArgs key ++ extras ++ [("characterID", show cid)]
 
 
 runRequest :: String -> [(String, String)] ->
-              (Element -> LowLevelResult a) ->
-              EVEDB -> IO (LowLevelResult a)
+              (Element -> Maybe a) ->
+              EVEDB -> IO a
 runRequest procedure args finishProcessing db =
   lookupCachedOrDo db reqHash parseResult runRequest
  where
   parseResult str =
     case parseXMLDoc str of
-      Nothing -> Left  $ XMLParseError str
-      Just r  -> finishProcessing r
+      Nothing -> throw (XMLParseError str)
+      Just r  -> case finishProcessing r of
+                   Just result -> result
+                   Nothing     -> throw (EVEParseError r)
   --
   runRequest = do
     res <- simpleHTTP req
     case res of
-      Left ErrorReset     -> return $ Left   ConnectionReset
-      Left ErrorClosed    -> return $ Left   ConnectionClosed
-      Left (ErrorParse x) -> return $ Left $ HTTPParseError x
-      Left (ErrorMisc  x) -> return $ Left $ UnknownError x
+      Left ErrorReset     -> throwIO  ConnectionReset
+      Left ErrorClosed    -> throwIO  ConnectionClosed
+      Left (ErrorParse x) -> throwIO (HTTPParseError x)
+      Left (ErrorMisc  x) -> throwIO (UnknownError x)
       Right resp          -> do
         let body = rspBody resp
         case parseXMLDoc body of
-          Nothing         -> return $ Left $ XMLParseError body
+          Nothing         -> throwIO  (XMLParseError body)
           Just xml        -> do
             let expireTime = cachedUntil xml
-                result     = finishProcessing xml
+                mresult    = finishProcessing xml
             addCachedResponse db reqHash body expireTime
-            return result
+            case mresult of
+              Just result -> return result
+              Nothing     -> throwIO (EVEParseError xml)
   --
   Just uri = parseURI $ "http://api.eve-online.com/" ++ procedure ++ ".xml.aspx"
   req      = Request uri POST hdrs body

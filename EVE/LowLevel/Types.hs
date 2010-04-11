@@ -1,11 +1,14 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module EVE.LowLevel.Types
  where
 
+import Control.Exception
 import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Time.Clock
 import Data.Time.Format
+import Data.Typeable
 import Text.XML.Light
 
 -----------------------------------------------------------------------------
@@ -28,15 +31,16 @@ instance APIKey FullAPIKey where
 -- Errors and low-level types
 --
 
-data LowLevelError = ConnectionReset
-                   | ConnectionClosed
-                   | HTTPParseError String
-                   | XMLParseError String
-                   | EVEParseError Element
-                   | UnknownError String
- deriving (Show)
+data EVELowLevelError = ConnectionReset
+                      | ConnectionClosed
+                      | HTTPParseError String
+                      | XMLParseError String
+                      | EVEParseError Element
+                      | UnknownError String
+ deriving (Show, Typeable)
 
-type    LowLevelResult a = Either LowLevelError a
+instance Exception EVELowLevelError
+
 newtype CorporationID    = CorpID Integer deriving (Show,Eq)
 newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
 newtype StationID        = StatID Integer deriving (Show,Ord,Eq)

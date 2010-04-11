@@ -1,7 +1,8 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module EVE.LowLevel.DB(
          EVEDB
        , openEVEDB
-       , downloadBaseDB
+       , closeEVEDB
        , disableCache
        , enableCache
        , lookupCachedOrDo
@@ -12,11 +13,13 @@ module EVE.LowLevel.DB(
 import Codec.Compression.BZip
 import Control.Concurrent
 import Control.Concurrent.MVar
+import Control.Exception
 import Control.Monad
 import Data.ByteString.Lazy(ByteString)
 import qualified Data.ByteString.Lazy as BS
 import Data.List
 import Data.Time
+import Data.Typeable
 import Database.SQLite
 import Foreign.Ptr
 import Network.HTTP
@@ -24,6 +27,11 @@ import Network.URI
 import System.Directory
 import System.Locale
 import System.IO
+
+data EVEDatabaseError = EVEDatabaseError String
+  deriving (Show, Typeable)
+
+instance Exception EVEDatabaseError
 
 data EVEDB = EVEDB {
     dbase   :: SQLiteHandle
@@ -62,31 +70,31 @@ additionalTableNames = map tabName additionalTables
 -- |Opens an EVE library database. If the given file does not exist, this
 -- function will create it and populate it with the initial data (this
 -- takes awhile). The Left value will be an error message on failure.
-openEVEDB :: FilePath -> IO (Either String EVEDB)
-openEVEDB path = catch openConn (\ e -> return $ Left $ show e)
- where
-  openConn :: IO (Either String EVEDB)
-  openConn = do
-    fileExists <- doesFileExist path
-    unless fileExists $ downloadBaseDB path
-    conn <- openConnection path
-    res <- execStatement conn getAllTables
-    case res of
-      Left err -> do
-        closeConnection conn
-        return $ Left $ show err
-      Right ls -> do
-        let items = map snd $ concat $ concat ls
-        unless (and $ map (`elem` items) additionalTableNames) $ do
-          forM_ additionalTables $ defineTable conn
-        cacheOnMV <- newMVar True
-        forkIO $ forever $ do
-          execStatement_ conn deleteStaleCache
-          threadDelay $ 10 * 60 * 1000000 -- ten minutes
-        return $ Right EVEDB {
-          dbase   = conn
-        , cacheOn = cacheOnMV
-        }
+--
+-- If there is a problem opening the database, this function will throw
+-- an EVEDatabaseError or a SQLite exception..
+openEVEDB :: FilePath -> IO EVEDB
+openEVEDB path = do
+  fileExists <- doesFileExist path
+  unless fileExists $ downloadBaseDB path
+  conn <- openConnection path
+  res  <- execStatement conn getAllTables
+  case res of
+    Left err -> throwIO (EVEDatabaseError err)
+    Right ls -> do
+      let items = map snd $ concat $ concat ls
+      unless (and $ map (`elem` items) additionalTableNames) $ do
+        forM_ additionalTables $ defineTable conn
+      cacheOnMV <- newMVar True
+      return $ EVEDB {
+        dbase   = conn
+      , cacheOn = cacheOnMV
+      }
+
+-- |Close an EVE library database. The handle will no longer be valid; using
+-- it will lead to unpredictable errors.
+closeEVEDB :: EVEDB -> IO ()
+closeEVEDB db = closeConnection (dbase db)
 
 downloadBaseDB :: FilePath -> IO ()
 downloadBaseDB dest = do
