@@ -1,8 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module EVE.LowLevel.API (
-         characterList
-       , charAccountBalances
-       , charAssetList
+         charAssetList
        , characterSheet
        , charFactionalWarfareStats
 --       , charIndustryJobs
@@ -59,15 +57,10 @@ module EVE.LowLevel.API (
 import Control.Applicative
 import Control.Exception
 import Control.Monad
-import qualified Data.ByteString.Lazy.Char8 as BSC
-import Data.Digest.Pure.SHA
 import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Time
-import Network.HTTP
-import Network.Stream
-import Network.URI
 import System.Locale
 import Text.XML.Light
 import Text.XML.Light.Helpers
@@ -81,29 +74,6 @@ import EVE.LowLevel.Types
 
 -- http://wiki.eve-id.net/APIv2_Page_Index#Notes
 -- is a very helpful page
-
--- |Return a list of the characters associated with the given API Key as a
--- a quadruple containing the character's name, ID, corporation name, and
--- corporation ID.
-characterList :: APIKey k => k -> EVEDB ->
-                 IO [(String,CharacterID,String,CorporationID)]
-characterList k =
- runRequest "account/Characters" (keyToArgs k) $ parseRows $ \ r -> do
-  name <-                       findAttr (unqual "name")            r
-  char <- CharID <$> (mread =<< findAttr (unqual "characterID")     r)
-  cnam <-                       findAttr (unqual "corporationName") r
-  corp <- CorpID <$> (mread =<< findAttr (unqual "corporationID")   r)
-  return (name, char, cnam, corp)
-
--- |Returns a list of the chracter's account balances as tuples containing
--- the account's ID and its current balance.
-charAccountBalances :: EVEDB -> FullAPIKey -> CharacterID ->
-                       IO [(AccountID, Double)]
-charAccountBalances =
- standardRequest "char/AccountBalance" $ parseRows $ \ r -> do
-  accountID <- AccID <$> (mread =<< findAttr (unqual "accountID") r)
-  amount    <-            mread =<< findAttr (unqual "balance")   r
-  return (accountID, amount)
 
 -- |Returns a complete list of the character's assets.
 charAssetList :: EVEDB -> FullAPIKey -> CharacterID ->
@@ -136,43 +106,6 @@ parseItem mlid el = do
   return (Item iid (lid, flg) tid qnt (not sng) sub)
 
 -- |Returns a character's base stats.
-characterSheet :: APIKey k =>
-                  EVEDB -> k -> CharacterID ->
-                  IO Character
-characterSheet = standardRequest "char/CharacterSheet" $ \ x -> do
-  cid <- CharID <$> (mread =<< getElementData "characterID"     x)
-  nm  <-                       getElementData "name"            x
-  rc  <-                       getElementData "race"            x
-  bl  <-                       getElementData "bloodLine"       x
-  gn  <-             mread =<< getElementData "gender"          x
-  cn  <-                       getElementData "corporationName" x
-  ci  <- CorpID <$> (mread =<< getElementData "corporationID"   x)
-  bal <-             mread =<< getElementData "balance"         x
-  int <-             mread =<< getElementData "intelligence"    x
-  mem <-             mread =<< getElementData "memory"          x
-  cha <-             mread =<< getElementData "charisma"        x
-  per <-             mread =<< getElementData "perception"      x
-  wil <-             mread =<< getElementData "willpower"       x
-  let enhs = catMaybes [getEnhancer "intelligenceBonus" Intelligence x
-                       ,getEnhancer "memoryBonus"       Memory       x
-                       ,getEnhancer "charismaBonus"     Charisma     x
-                       ,getEnhancer "perceptionBonus"   Perception   x
-                       ,getEnhancer "willpowerBonus"    Willpower    x]
-  sks <- do base <- findElementWithAttName "skills" x
-            mapChildren "row" base $ \ sk -> do
-              typ <- SkillID <$> (mread =<< findAttr (unqual "typeID")      sk)
-              lev <-              mread =<< findAttr (unqual "level")       sk
-              pnt <-              mread =<< findAttr (unqual "skillpoints") sk
-              return (SkillLevel typ lev, pnt)
-  return (Character cid nm rc bl gn cn ci bal enhs int mem cha per wil sks)
- where
-  getEnhancer :: String -> Attribute -> Element -> Maybe AttributeEnhancer
-  getEnhancer s attr xml = do
-    el <- findElement (unqual s) xml
-    nm <-           getChildData "augmentatorName" el
-    vl <- mread =<< getChildData "augmentatorValue" el
-    return (AttrEnh attr nm vl)
-
 charFactionalWarfareStats :: APIKey k => 
                              EVEDB -> k -> CharacterID ->
                              IO (Maybe CharWarfareStats)
@@ -698,47 +631,6 @@ eveAllianceList = runRequest "eve/AllianceList" [] parse
                  return (CorpID c, d)
       return (Alliance allID name sname exeID cnt start mems)
 
-eveCertificateTree :: EVEDB -> IO ([CertificateCategory],
-                                   [CertificateClass],
-                                   [Certificate])
-eveCertificateTree = runRequest "eve/CertificateTree" [] parse
- where
-  parse xml = do
-    rows <- findElementWithAttName "categories" xml
-    foldChildren "row" rows ([],[],[]) $ \ (cats, classes, certs) c -> do
-      catID <- CCatID <$> (mread =<< findAttr (unqual "categoryID")   c)
-      catNm <-                       findAttr (unqual "categoryName") c
-      cset  <-                       findChildWithAttName "classes"   c
-      let newAcc = (CCat catID catNm : cats, classes, certs)
-      foldChildren "row" cset newAcc $ \ (cats2, classes2, certs2) l -> do
-        clID   <- mread =<< findAttr (unqual "classID")   l
-        clName <-           findAttr (unqual "className") l
-        ceset  <- findChildWithAttName "certificates" l
-        let newAcc' = (cats2, CClass (CClassID clID) clName : classes2, certs2)
-        foldChildren "row" ceset newAcc' $ \ (cats3, classes3, certs3) x -> do
-          ceID    <- mread =<< findAttr (unqual "certificateID") x
-          ceGrade <- mread =<< findAttr (unqual "grade")         x
-          ceCorp  <- mread =<< findAttr (unqual "corporationID") x
-          ceDesc  <-           findAttr (unqual "description")   x
-          sreqs   <- case findChildWithAttName "requiredSkills" x of
-                       Nothing   -> Just []
-                       Just sset -> fmap (map SkillReq) $
-                         mapChildren "row" sset $ \ r -> do
-                           sid <- mread =<< findAttr (unqual "typeID") r
-                           slv <- mread =<< findAttr (unqual "level")  r
-                           return $ SkillLevel (SkillID sid) slv
-          creqs   <- case findChildWithAttName "requiredCertificates" x of
-                       Nothing   -> Just []
-                       Just rset -> fmap (map CertificateReq) $
-                         mapChildren "row" rset $ \ r -> do
-                           cid <- mread =<< findAttr (unqual "certificateID") r
-                           clv <- mread =<< findAttr (unqual "grade")         r
-                           return $ CertLevel (CertID cid) clv
-          let newCert = Certificate (CertID ceID) catID (CClassID clID)
-                                    (CorpID ceCorp) ceDesc ceGrade
-                                    (sreqs ++ creqs)
-          return (cats3, classes3, newCert : certs3)
-
 eveConquerableStationList :: EVEDB -> IO [ConquerableStation]
 eveConquerableStationList =
   runRequest "eve/ConquerableStationList" [] $ parseRows $ \ r -> do
@@ -852,50 +744,6 @@ eveRefTypesList = runRequest "eve/RefTypes" [] $ parseRows readRow
     refname <-           findAttr (unqual "refTypeName") r
     return (refid, refname)
 
-eveSkillTree :: EVEDB -> IO ([SkillGroup], [Skill])
-eveSkillTree = runRequest "eve/SkillTree" [] parseResults
- where
-  parseResults :: Element -> Maybe ([SkillGroup], [Skill])
-  parseResults xml = do
-    rows <- findElementWithAttName "skillGroups" xml
-    foldChildren "row" rows ([],[]) $ \ (groups,skills) grow -> do
-      name <- findAttr (unqual "groupName") grow
-      gid  <- mread =<< findAttr (unqual "groupID") grow
-      let newGroup = SkillGroup name (SkillGroupID gid)
-      foldChildren "rowset" grow (newGroup:groups, skills) $ \ acc srows ->
-        foldChildren "row" srows acc $ \ (groups', skills') srow -> do
-          sname <-           findAttr (unqual "typeName") srow
-          tid   <- mread =<< findAttr (unqual "typeID") srow
-          grp   <- mread =<< findAttr (unqual "groupID") srow
-          desc  <-           getChildData "description" srow
-          rank  <- mread =<< getChildData "rank" srow
-          pri   <- mread =<< getElementData "primaryAttribute" srow
-          sec   <- mread =<< getElementData "secondaryAttribute" srow
-          unless (grp == gid) $ fail "group is not equal to id!"
-          rreqs <- findChildWithAttName "requiredSkills" srow
-          reqs  <- mapChildren "row" rreqs $ \ req -> do
-                     reqtid <- mread =<< findAttr (unqual "typeID") req
-                     reqsl  <- mread =<< findAttr (unqual "skillLevel") req
-                     return (SkillLevel (SkillID reqtid) reqsl)
-          rbons <- findChildWithAttName "skillBonusCollection" srow
-          bons  <- mapChildren "row" rbons $ \ bon -> do
-                     btype <- findAttr (unqual "bonusType") bon
-                     bval  <- findAttr (unqual "bonusValue") bon
-                     return (btype, bval)
-          let (reqs',bons') = parseBonuses bons
-              skill         = Skill {
-                                skillName         = sname
-                              , skillGroup        = SkillGroupID grp
-                              , skillID           = SkillID tid
-                              , skillDescription  = desc
-                              , skillRank         = rank
-                              , skillPrimary      = pri
-                              , skillSecondary    = sec
-                              , skillRequirements = reqs ++ reqs'
-                              , skillBonuses      = bons'
-                              }
-          return (groups', skill : skills')
-
 mapFactionalWarfareOccupancyMap
   :: EVEDB -> IO [(Integer, String, Integer, String, Bool)]
 mapFactionalWarfareOccupancyMap =
@@ -955,99 +803,7 @@ serverStatus = runRequest "server/ServerStatus" [] pullResult
     players <- mread =<< getElementStringContent "onlinePlayers" xml
     return (open, players)
 
-cachedUntil :: Element -> UTCTime
-cachedUntil xml = fromMaybe zeroHour $ do
-  str <- getElementStringContent "cachedUntil" xml
-  parseTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" str
-
-zeroHour :: UTCTime
-zeroHour = UTCTime (toEnum 0) (toEnum 0)
-
-mread :: Read a => String -> Maybe a
-mread = fmap fst . listToMaybe . reads
-
-tread :: ParseTime t => String -> Maybe t
-tread = fmap fst . listToMaybe . readsTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
-
-boolify :: Integer -> Bool
-boolify 0 = False
-boolify 1 = True
-boolify _ = throw (EVETypeConversionError "boolify")
-
-parseRows :: (Element -> Maybe a) -> Element -> Maybe [a]
-parseRows f xml = sequence $ map f $ findElements (unqual "row") xml
-
 -----------------------------------------------------------------------------
 -- Some helper functions to make writing the above less tedious.
 --
 
-walkableRequest :: APIKey k =>
-                   String -> String ->
-                   (Element -> Maybe a) ->
-                   EVEDB -> k -> CharacterID -> Maybe RefID ->
-                   IO a
-walkableRequest proc name finish db k c ref =
-  extendedRequest extra proc finish db k c
- where extra = case ref of
-                 Nothing        -> []
-                 Just (RID rid) -> [(name, show rid)]
-
-standardRequest :: APIKey k =>
-                   String -> (Element -> Maybe a) ->
-                   EVEDB -> k -> CharacterID ->
-                   IO a
-standardRequest = extendedRequest []
-
-extendedRequest :: APIKey k =>
-                   [(String, String)] -> String ->
-                   (Element -> Maybe a) ->
-                   EVEDB -> k -> CharacterID ->
-                   IO a
-extendedRequest extras proc finish db key (CharID cid) =
-  runRequest proc args finish db
- where args = keyToArgs key ++ extras ++ [("characterID", show cid)]
-
-
-runRequest :: String -> [(String, String)] ->
-              (Element -> Maybe a) ->
-              EVEDB -> IO a
-runRequest procedure args finishProcessing db =
-  lookupCachedOrDo db reqHash parseResult runRequest'
- where
-  parseResult str =
-    case parseXMLDoc str of
-      Nothing -> throw (XMLParseError str)
-      Just r  -> case finishProcessing r of
-                   Just result -> result
-                   Nothing     -> throw (EVEParseError r)
-  --
-  runRequest' = do
-    res <- simpleHTTP req
-    case res of
-      Left ErrorReset     -> throwIO  ConnectionReset
-      Left ErrorClosed    -> throwIO  ConnectionClosed
-      Left (ErrorParse x) -> throwIO (HTTPParseError x)
-      Left (ErrorMisc  x) -> throwIO (UnknownError x)
-      Right resp          -> do
-        let bod = rspBody resp
-        case parseXMLDoc bod of
-          Nothing         -> throwIO  (XMLParseError bod)
-          Just xml        -> do
-            let expireTime = cachedUntil xml
-                mresult    = finishProcessing xml
-            addCachedResponse db reqHash bod expireTime
-            case mresult of
-              Just result -> return result
-              Nothing     -> throwIO (EVEParseError xml)
-  --
-  Just uri = parseURI $ "http://api.eve-online.com/" ++ procedure ++ ".xml.aspx"
-  req      = Request uri POST hdrs body
-  hdrs     = [Header HdrContentType "application/x-www-form-urlencoded",
-              Header HdrContentLength (show $ length body)]
-  body     = intercalate "&" $ map (\ (a,b) -> a ++ "=" ++ b) args
-  reqHash  = showDigest $ sha512 $ BSC.pack $ show req ++ body
-
-getElementStringContent :: String -> Element -> Maybe String
-getElementStringContent name xml = do
-  el <- findElement (unqual name) xml
-  return $ strContent el

@@ -7,6 +7,10 @@ module EVE.LowLevel.DB(
        , enableCache
        , lookupCachedOrDo
        , addCachedResponse
+       --
+       , updateSkillTables
+       , updateCertificateTables
+       , testDB
        )
  where
 
@@ -36,6 +40,22 @@ data EVEDB = EVEDB {
   , cacheOn :: MVar Bool
   }
 
+testDB :: IO ()
+testDB  = do
+  exists <- doesFileExist "foo.db"
+  when exists $ removeFile "foo.db"
+  conn <- openConnection "foo.db"
+  res  <- execStatement conn getAllTables
+  case res of
+    Left err -> throwIO (EVEDatabaseError err)
+    Right ls -> do
+      let items = map snd $ concat $ concat ls
+      unless (and $ map (`elem` items) additionalTableNames) $ do
+        forM_ additionalTables $ \tab -> do
+          res <- defineTable conn tab
+          putStrLn $ tabName tab ++ ": " ++ show res
+        closeConnection conn
+
 additionalTables :: [SQLTable]
 additionalTables = [
     -- |Our request cache.
@@ -60,7 +80,230 @@ additionalTables = [
       ]
     , tabConstraints = [TablePrimaryKey ["request"]]
     }
+    -- tables describing skills
+  , Table {
+      tabName        = "SkillGroups"
+    , tabColumns     = [
+        Column {
+          colName    = "groupID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, Unique, PrimaryKey False]
+        }
+      , Column {
+          colName    = "groupName"
+        , colType    = SQLChar Nothing
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["groupID"]]
+    }
+  , Table {
+      tabName        = "Skills"
+    , tabColumns     = [
+        Column {
+          colName    = "skillID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, Unique, PrimaryKey False]
+        }
+      , Column {
+          colName    = "groupID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [ForeignKey "SkillGroups" ["groupID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "name"
+        , colType    = SQLChar Nothing
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "description"
+        , colType    = SQLBlob LongBlob
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "primaryAttr"
+        , colType    = SQLChar (Just 12)
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "secondaryAttr"
+        , colType    = SQLChar (Just 12)
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "rank"
+        , colType    = SQLInt TINY True False
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["skillID"]]
+    }
+  , Table {
+      tabName        = "SkillReqs"
+    , tabColumns     = [
+        Column {
+          colName    = "skillID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "Skills" ["skillID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "reqSkillID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, 
+                        ForeignKey "Skills" ["skillID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "reqLevel"
+        , colType    = SQLInt TINY True False
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["skillID","reqSkillID"]]
+    }
+  , Table {
+      tabName        = "SkillBonuses"
+    , tabColumns     = [
+        Column {
+          colName    = "skillID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "Skills" ["skillID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "bonus"
+        , colType    = SQLChar Nothing
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "valueInt"
+        , colType    = SQLInt BIG False False
+        , colClauses = []
+        }
+      , Column {
+          colName    = "valueFloat"
+        , colType    = SQLFloat Nothing Nothing
+        , colClauses = []
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["skillID","bonus"]]
+    }
+    -- tables describing certificates
+  , Table {
+      tabName        = "CertCategories"
+    , tabColumns     = [
+        Column {
+          colName    = "categoryName"
+        , colType    = SQLChar Nothing
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "categoryID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, Unique, PrimaryKey False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["categoryID"]]
+    }
+  , Table {
+      tabName        = "CertClasses"
+    , tabColumns     = [
+        Column {
+          colName    = "categoryID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "CertCategories" ["categoryID"]
+                                   cascade Nothing]
+        }
+      , Column {
+          colName    = "classID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, Unique, PrimaryKey False]
+        }
+      , Column {
+          colName    = "className"
+        , colType    = SQLChar Nothing
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["classID"]]
+    }
+  , Table {
+      tabName        = "CertGrades"
+    , tabColumns     = [
+        Column {
+          colName    = "certID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, Unique, PrimaryKey False]
+        }
+      , Column {
+          colName    = "certGrade"
+        , colType    = SQLInt TINY True False
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "classID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "CertClasses" ["classID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "grantingCorp"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False]
+        }
+      , Column {
+          colName    = "description"
+        , colType    = SQLBlob LongBlob
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["certID"]]
+    }
+  , Table {
+      tabName        = "CertRequiredSkills"
+    , tabColumns     = [
+        Column {
+          colName    = "certID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "CertGrades" ["certID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "reqSkillID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "Skills" ["skillID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "reqSkillLevel"
+        , colType    = SQLInt TINY True False
+        , colClauses = [IsNullable False]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["certID"]]
+    }
+  , Table {
+      tabName        = "CertRequiredCerts"
+    , tabColumns     = [
+        Column {
+          colName    = "certID"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False, 
+                        ForeignKey "CertGrades" ["certID"] cascade Nothing]
+        }
+      , Column {
+          colName    = "reqCert"
+        , colType    = SQLInt BIG True False
+        , colClauses = [IsNullable False,
+                        ForeignKey "CertGrades" ["certID"] cascade Nothing]
+        }
+      ]
+    , tabConstraints = [TablePrimaryKey ["certID","reqCert"]]
+  }
   ]
+ where
+  cascade = [OnDelete Cascade, OnUpdate Cascade]
 
 additionalTableNames :: [String]
 additionalTableNames = map tabName additionalTables
@@ -139,6 +382,50 @@ escapeQuotes ('\'':rest) = '\"' : escapeQuotes rest
 escapeQuotes (f:rest)    = f : escapeQuotes rest
 
 -- --------------------------------------------------------------------------
+-- Table updates from the EVE API
+--
+
+updateSkillTables :: EVEDB                                           ->
+                     [(Integer, String)]                             ->
+                     [(Integer, Integer, String, String,
+                      String, String, Integer)]                      ->
+                     [(Integer, Integer, Integer)]                   ->
+                     [(Integer, String, Maybe Integer, Maybe Float)] ->
+                     IO ()
+updateSkillTables db groups skills reqs bonuses = do
+  _ <- execStatement_ (dbase db) "DELETE FROM SkillBonuses;"
+  _ <- execStatement_ (dbase db) "DELETE FROM SkillReqs;"
+  _ <- execStatement_ (dbase db) "DELETE FROM Skills;"
+  _ <- execStatement_ (dbase db) "DELETE FROM SkillGroups;"
+  forM_ groups  (execStatement_ (dbase db) . insertSGroup)
+  forM_ skills  (execStatement_ (dbase db) . insertSkill)
+  forM_ reqs    (execStatement_ (dbase db) . insertSReq)
+  forM_ bonuses (execStatement_ (dbase db) . insertSBon)
+  _ <- execStatement_ (dbase db) "END TRANSACTION"
+  return ()
+
+updateCertificateTables :: EVEDB                                          ->
+                           [(String, Integer)]                            ->
+                           [(Integer, Integer, String)]                   ->
+                           [(Integer, Integer, Integer, Integer, String)] ->
+                           [(Integer, Integer, Integer)]                  ->
+                           [(Integer, Integer)]                           ->
+                           IO ()
+updateCertificateTables db groups classes grades sreqs creqs = do
+  _ <- execStatement_ (dbase db) "DELETE FROM CertCategories;"
+  _ <- execStatement_ (dbase db) "DELETE FROM CertClasses;"
+  _ <- execStatement_ (dbase db) "DELETE FROM CertGrades;"
+  _ <- execStatement_ (dbase db) "DELETE FROM CertRequiredSkills;"
+  _ <- execStatement_ (dbase db) "DELETE FROM CertRequiredCerts;"
+  forM_ groups  (execStatement_ (dbase db) . insertCGroup)
+  forM_ classes (execStatement_ (dbase db) . insertCClasses)
+  forM_ grades  (execStatement_ (dbase db) . insertCGrades)
+  forM_ sreqs   (execStatement_ (dbase db) . insertCSReq)
+  forM_ creqs   (execStatement_ (dbase db) . insertCCReq)
+  _ <- execStatement_ (dbase db) "END TRANSACTION"
+  return ()
+
+-- --------------------------------------------------------------------------
 -- SQL Statements
 --
 
@@ -168,3 +455,66 @@ cacheItem req rsp expire = intercalate " " [
    "INSERT OR REPLACE INTO Cache(request,result,expireTime) VALUES"
   ,"   ('"++req++"', '"++rsp++"', '"++expire++"');"
   ]
+
+insertSGroup :: (Integer, String) -> String
+insertSGroup (gid, str) = intercalate " " [
+   "INSERT OR ABORT INTO SkillGroups(groupID,groupName) VALUES"
+  ,"   ("++show gid++",'"++str++"');"
+  ]
+
+insertSkill :: (Integer, Integer, String, String, String, String, Integer) ->
+                String
+insertSkill (sid,gid,nm,dc,pr,sn,r) = intercalate " " [
+   "INSERT OR ABORT INTO Skills(skillID,groupID,name,description,"
+  ,                            "primaryAttr,secondaryAttr,rank) VALUES"
+  ,"   ("++show sid++","++show gid++",'"++nm++"','"++dc++"','"
+  ,     pr++"','"++sn++"',"++show r++")"
+  ]
+
+insertSReq :: (Integer, Integer, Integer) -> String
+insertSReq (sid,rid,lev) = intercalate " " [
+   "INSERT OR ABORT INTO SkillReqs(skillID,reqSkillID,reqLevel) VALUES"
+  ,"  ("++show sid++","++show rid++","++show lev++")"
+  ]
+
+insertSBon :: (Integer, String, Maybe Integer, Maybe Float) -> String
+insertSBon (sid,bon,mi,mf) = intercalate " " [
+   "INSERT OR ABORT INTO SkillBonuses(skillID,bonus,valueInt,valueFloat) VALUES"
+  ,"  ("++show sid++",'"++bon++"',"++showm mi++","++showm mf++")"
+  ]
+ where
+  showm Nothing  = "NULL"
+  showm (Just x) = show x
+
+insertCGroup :: (String, Integer) -> String
+insertCGroup (a,b) = intercalate " " [
+   "INSERT OR ABORT INTO CertCategories(categoryName,categoryID) VALUES"
+  ,"  ('"++a++"',"++show b++")"
+  ]
+
+insertCClasses :: (Integer, Integer, String) -> String
+insertCClasses (a,b,c) = intercalate " " [
+   "INSERT OR ABORT INTO CertClasses(categoryID,classID,className) VALUES"
+  ,"  ("++show a++","++show b++",'"++c++"')"
+  ]
+
+insertCGrades :: (Integer, Integer, Integer, Integer, String) -> String
+insertCGrades (a,b,c,d,e) = intercalate " " [
+   "INSERT OR ABORT INTO "
+  ,"   CertGrades(certID,certGrade,classID,grantingCorp,description)"
+  ," VALUES "
+  ,"   ("++show a++","++show b++","++show c++","++show d++",'"++e++"')"
+  ]
+
+insertCSReq :: (Integer, Integer, Integer) -> String
+insertCSReq (a,b,c) = intercalate " " [
+   "INSERT OR ABORT INTO CertRequiredSkills(certID,reqSkillID,reqSkillLevel)"
+  ,"VALUES ("++show a++","++show b++","++show c++")"
+  ]
+
+insertCCReq :: (Integer, Integer) -> String
+insertCCReq (a,b) = intercalate " " [
+   "INSERT OR ABORT INTO CertRequiredCerts(certID,reqCert) VALUES"
+  ,"  ("++show a++","++show b++")"
+  ]
+

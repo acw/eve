@@ -3,6 +3,8 @@ module Text.XML.Light.Helpers
 
 import Control.Monad
 import Data.Maybe
+import Data.Time
+import System.Locale
 import Text.XML.Light
 
 mapChildren :: String -> Element -> (Element -> Maybe a) -> Maybe [a]
@@ -45,6 +47,11 @@ getChildData s x = strContent `fmap` findChild (unqual s) x
 getElementData :: String -> Element -> Maybe String
 getElementData s x = strContent `fmap` findElement (unqual s) x
 
+getElementStringContent :: String -> Element -> Maybe String
+getElementStringContent name xml = do
+  el <- findElement (unqual name) xml
+  return $ strContent el
+
 --
 
 findChildWithAttName :: String -> Element -> Maybe Element
@@ -64,3 +71,16 @@ elementHasNameAttr s e =
   case findAttr (unqual "name") e of
     Nothing -> False
     Just v  -> s == v
+
+--
+
+mread :: Read a => String -> Maybe a
+mread = fmap fst . listToMaybe . reads
+
+tread :: ParseTime t => String -> Maybe t
+tread = fmap fst . listToMaybe . readsTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
+
+parseRows :: (Element -> Maybe a) -> Element -> Maybe [a]
+parseRows f xml = sequence $ map f $ findElements (unqual "row") xml
+
+

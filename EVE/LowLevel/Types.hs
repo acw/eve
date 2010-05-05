@@ -9,45 +9,20 @@ import Data.Maybe
 import Data.Time.Clock(UTCTime(..))
 import Data.Time.Format()
 import Data.Typeable
-import Text.XML.Light
 
 -----------------------------------------------------------------------------
 -- Data types / classes for API keys
 --
 
-data LimitedAPIKey = LAPIK { limUserID  :: String, limAPIKey  :: String }
-data FullAPIKey    = FAPIK { fullUserID :: String, fullAPIKey :: String }
-
-class APIKey k where
-  keyToArgs :: k -> [(String, String)]
-
-instance APIKey LimitedAPIKey where
-  keyToArgs (LAPIK x y) = [("userID", x), ("apiKey", y)]
-
-instance APIKey FullAPIKey where
-  keyToArgs (FAPIK x y) = [("userID", x), ("apiKey", y)]
-
 -----------------------------------------------------------------------------
 -- Errors and low-level types
 --
-
-data EVELowLevelError = ConnectionReset
-                      | ConnectionClosed
-                      | HTTPParseError String
-                      | XMLParseError String
-                      | EVEParseError Element
-                      | EVETypeConversionError String
-                      | UnknownError String
- deriving (Show, Typeable)
-
-instance Exception EVELowLevelError
 
 newtype CorporationID    = CorpID Integer deriving (Show,Eq)
 newtype FactionID        = FacID  Integer deriving (Show,Ord,Eq)
 newtype StationID        = StatID Integer deriving (Show,Ord,Eq)
 newtype SolarSystemID    = SSID   Integer deriving (Show,Ord,Eq)
 newtype LocationID       = LocID  Integer deriving (Show,Ord,Eq)
-newtype RefID            = RID    Integer deriving (Show)
 newtype ListID           = ListID Integer deriving (Show)
 newtype MessageID        = MsgID  Integer deriving (Show)
 newtype JobID            = JobID  Integer deriving (Show)
@@ -71,28 +46,6 @@ newtype SkillGroupID = SkillGroupID Integer deriving (Eq,Show,Ord)
 data SkillGroup = SkillGroup {
                     groupName :: String
                   , groupID   :: SkillGroupID
-                  }
- deriving (Show)
-
-data Attribute = Intelligence
-               | Perception
-               | Charisma
-               | Willpower
-               | Memory
- deriving (Show)
-
-instance Read Attribute where
-  readsPrec _ s = case map toLower s of
-                    "intelligence" -> [(Intelligence,"")]
-                    "perception"   -> [(Perception,"")]
-                    "charisma"     -> [(Charisma,"")]
-                    "willpower"    -> [(Willpower,"")]
-                    "memory"       -> [(Memory,"")]
-                    _              -> []
-
-data SkillLevel = SkillLevel {
-                    levelSkill :: SkillID
-                  , levelLevel :: Integer
                   }
  deriving (Show)
 
@@ -135,18 +88,15 @@ data Bonus = AccessDifficulty Integer
            | CapacitorNeedMult Integer
            | CharismaBonus
            | CloakingTargetingDelay Integer
-           | ConnectionMutator Double
            | ConsumptionQuantity Integer
            | ConsumptionQuantityPerc Integer
            | CopySpeed Integer
            | CorporationMember Integer
            | CPUNeed Integer
            | CPUOutputBonus Integer
-           | CriminalConnectionsMutator Double
            | DamageCloudChanceReduction Integer
            | DamageHP Integer
            | DamageMultiplier Integer
-           | DiplomacyMutator Double
            | DroneMaxVelocity Integer
            | DroneRange Integer
            | Duration Integer
@@ -214,7 +164,6 @@ data Bonus = AccessDifficulty Integer
            | TrackingSpeed Integer
            | TradePremium Integer
            | TurretSpeed Integer
-           | Uniformity Double
            | Velocity Integer
            | WarpCapacitorNeed Integer
            | WillpowerBonus
@@ -229,108 +178,6 @@ parseBonuses ls = (mapMaybe getSkill ["4","5","6"], map (uncurry pb) others)
     skill <- lookup ("requiredSkill" ++ x)            reqSkills
     level <- lookup ("requiredSkill" ++ x ++ "Level") reqSkills
     return $ SkillLevel (SkillID $ read skill) (read level)
-
-pb :: String -> String -> Bonus
-pb "accessDifficultyBonus"               v = AccessDifficulty           $ read v
-pb "agilityBonus"                        v = Agility                    $ read v
-pb "aoeCloudSizeBonus"                   v = AreaOfEffectSize           $ read v
-pb "aoeVelocityBonus"                    v = AreaOfEffectVelocity       $ read v
-pb "armorHpBonus"                        v = ArmorHitPoints             $ read v
-pb "blueprintmanufactureTimeBonus"       v = BlueprintManufactureTime   $ read v
-pb "boosterAttributeModifier"            v = BoosterAttributeModifier   $ read v
-pb "boosterChanceBonus"                  v = BoosterChance              $ read v
-pb "bountySkillBonus"                    v = BountySkill                $ read v
-pb "canNotBeTrainedOnTrial"              _ = CanNotBeTrainedOnTrial
-pb "capNeedBonus"                        v = CapNeed                    $ read v
-pb "capRechargeBonus"                    v = CapRecharge                $ read v
-pb "capacitorCapacityBonus"              v = CapacitorCapacity          $ read v
-pb "capacitorNeedMultipler"              v = CapacitorNeedMult          $ read v
-pb "charismaBonus"                       _ = CharismaBonus
-pb "cloakingTargetingDelayBonus"         v = CloakingTargetingDelay     $ read v
-pb "connectionBonusMutator"              v = ConnectionMutator          $ read v
-pb "consumptionQuantityBonus"            v = ConsumptionQuantity        $ read v
-pb "consumptionQuantityBonusPercentage"  v = ConsumptionQuantityPerc    $ read v
-pb "copySpeedBonus"                      v = CopySpeed                  $ read v
-pb "corporationMemberBonus"              v = CorporationMember          $ read v
-pb "cpuNeedBonus"                        v = CPUNeed                    $ read v
-pb "cpuOutputBonus2"                     v = CPUOutputBonus             $ read v
-pb "criminalConnectionsMutator"          v = CriminalConnectionsMutator $ read v
-pb "damageCloudChanceReduction"          v = DamageCloudChanceReduction $ read v
-pb "damageHP"                            v = DamageHP                   $ read v
-pb "damageMultiplierBonus"               v = DamageMultiplier           $ read v
-pb "diplomacyMutator"                    v = DiplomacyMutator           $ read v
-pb "droneMaxVelocityBonus"               v = DroneMaxVelocity           $ read v
-pb "droneRangeBonus"                     v = DroneRange                 $ read v
-pb "durationBonus"                       v = Duration                   $ read v
-pb "durationSkillBonus"                  v = DurationSkill              $ read v
-pb "falloffBonus"                        v = FalloffBonus               $ read v
-pb "fastTalkMutator"                     v = FastTalkMutator            $ read v
-pb "hardeningBonus"                      v = Hardening                  $ read v
-pb "hardeningbonus2"                     v = Hardening2                 $ read v
-pb "hullHpBonus"                         v = HullHP                     $ read v
-pb "iceHarvestCycleBonus"                v = IceHarvestCycle            $ read v
-pb "intelligenceBonus"                   _ = IntelligenceBonus
-pb "inventionBonus"                      v = Invention                  $ read v
-pb "jumpDriveCapacitorNeedBonus"         v = JumpDriveCapacitorNeed     $ read v
-pb "jumpDriveRangeBonus"                 v = JumpDriveRange             $ read v
-pb "laboratorySlotsBonus"                v = LaboratorySlots            $ read v
-pb "learningBonus"                       v = Learning                   $ read v
-pb "manufactureCostBonus"                v = ManufactureCost            $ read v
-pb "manufacturingSlotBonus"              v = ManufactureSlot            $ read v
-pb "manufacturingTimeBonus"              v = ManufactureTime            $ read v
-pb "maxActiveDroneBonus"                 v = MaxActiveDrones            $ read v
-pb "maxAttackTargets"                    v = MaxAttackTargets           $ read v
-pb "maxFlightTimeBonus"                  v = MaxFlightTime              $ read v
-pb "maxJumpClones"                       v = MaxJumpClones              $ read v
-pb "maxJumpClonesBonus"                  v = MaxJumpClones2             $ read v
-pb "maxScanDeviationModifier"            v = MaxScanDeviationModifier   $ read v
-pb "maxTargetBonus"                      v = MaxTargetBonus             $ read v
-pb "maxTargetRangeBonus"                 v = MaxTargetRange             $ read v
-pb "memoryBonus"                         _ = MemoryBonus
-pb "mineralNeedResearchBonus"            v = MineralNeedResearch        $ read v
-pb "miningAmountBonus"                   v = MiningAmount               $ read v
-pb "miningUpgradeCPUReductionBonus"      v = MiningUpgradeCPUReduction  $ read v
-pb "minmatarTechMutator"                 v = MinmatarTechMutator        $ read v
-pb "missileVelocityBonus"                v = MissileVelocity            $ read v
-pb "moduleRepairRateBonus"               v = ModuleRepairRate           $ read v
-pb "negotiationBonus"                    v = Negotiation                $ read v
-pb "nonRaceCorporationMembersBonus"      v = NonRaceCorporationMembers  $ read v
-pb "perceptionBonus"                     _ = PerceptionBonus
-pb "posStructureControlAmount"           v = POSStructureControl        $ read v
-pb "powerEngineeringOutputBonus"         v = PowerEngineeringOutput     $ read v
-pb "powerNeedBonus"                      v = PowerNeed                  $ read v
-pb "projECMDurationBonus"                v = ProjECMDuration            $ read v
-pb "rangeSkillBonus"                     v = Range                      $ read v
-pb "rechargeratebonus"                   v = RechargeRate               $ read v
-pb "refiningYieldMutator"                v = RefiningYieldMutator       $ read v
-pb "researchGangSizeBonus"               v = ResearchGangSize           $ read v
-pb "resistanceBonus"                     v = Resistance                 $ read v
-pb "rigDrawbackBonus"                    v = RigDrawback                $ read v
-pb "rofBonus"                            v = RateOfFire                 $ read v
-pb "scanResolutionBonus"                 v = ScanResolution             $ read v
-pb "scanSkillEwStrengthBonus"            v = ScanEWStrength             $ read v
-pb "scanSkillTargetPaintStrengthBonus"   v = TargetPaintStrength        $ read v
-pb "scanStrengthBonus"                   v = ScanStrength               $ read v
-pb "scanspeedBonus"                      v = ScanSpeed                  $ read v
-pb "shieldBoostCapacitorBonus"           v = ShieldBoostCapacitor       $ read v
-pb "shieldCapacityBonus"                 v = ShieldCapacity             $ read v
-pb "shieldRechargerateBonus"             v = ShieldRecharge             $ read v
-pb "shipBrokenRepairCostMultiplierBonus" v = ShipBrokenRepCostMult      $ read v
-pb "shipPowerBonus"                      v = ShipPower                  $ read v
-pb "socialBonus"                         v = Social                     $ read v
-pb "socialMutator"                       v = SocialMutator              $ read v
-pb "speedFBonus"                         v = SpeedF                     $ read v
-pb "speedFactor"                         v = SpeedFactor                $ read v
-pb "squadronCommandBonus"                v = SquadronCommand            $ read v
-pb "thermodynamicsHeatDamage"            v = ThermodynamicsHeatDamage   $ read v
-pb "trackingSpeedBonus"                  v = TrackingSpeed              $ read v
-pb "tradePremiumBonus"                   v = TradePremium               $ read v
-pb "turretSpeeBonus"                     v = TurretSpeed                $ read v
-pb "uniformityBonus"                     v = Uniformity                 $ read v
-pb "velocityBonus"                       v = Velocity                   $ read v
-pb "warpCapacitorNeedBonus"              v = WarpCapacitorNeed          $ read v
-pb "willpowerBonus"                      _ = WillpowerBonus
-pb ub                                   uv = UnknownBonus ub uv
 
 -----------------------------------------------------------------------------
 -- Certificates
@@ -628,42 +475,6 @@ fromLocFlag SecondaryStorage            = 122
 -----------------------------------------------------------------------------
 -- Character Information
 --
-
-newtype CharacterID      = CharID Integer deriving (Show,Eq)
-data Gender = Male | Female               deriving (Show,Eq)
-
-instance Read Gender where
-  readsPrec _ x = case map toLower x of
-                    s | "male"   `isPrefixOf` s -> [(Male,   drop 4 x)]
-                      | "female" `isPrefixOf` s -> [(Female, drop 6 x)]
-                      | otherwise               -> []
-
-data Character = Character {
-    charID                 :: CharacterID
-  , charName               :: String
-  , charRace               :: String
-  , charBloodline          :: String
-  , charGender             :: Gender
-  , charCorporationName    :: String
-  , charCorporationID      :: CorporationID
-  , charBalance            :: Double
-  , charAttributeEnhancers :: [AttributeEnhancer]
-  , charIntelligence       :: Int
-  , charMemory             :: Int
-  , charCharisma           :: Int
-  , charPerception         :: Int
-  , charWillpower          :: Int
-  , charSkills             :: [(SkillLevel, Integer)]
-  }
- deriving (Show)
-
-data AttributeEnhancer = AttrEnh {
-    attrenAttribute :: Attribute
-  , attrenName      :: String
-  , attrenBonus     :: Integer
-  }
- deriving (Show)
-
 -----------------------------------------------------------------------------
 -- Kill Data
 --
