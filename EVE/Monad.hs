@@ -28,17 +28,19 @@ mkFullAPIKey = FAPIK
 -- |Run an EVE action using the given API keys. EVE API keys can be gotten
 -- from the eve-online main site.
 runEVEWithKey :: APIKey k => k -> EVE k a -> IO a
-runEVEWithKey k m = bracket openDB closeEVEDB $ \ db ->
+runEVEWithKey k m = bracket (openDB True) closeEVEDB $ \ db ->
   fst `fmap` unEVE m (EveState db k Nothing)
- where
-  openDB :: IO EVEDB
-  openDB = do 
-    basedir <- getAppUserDataDirectory "eveapi"
-    createDirectoryIfMissing True basedir
-    openEVEDB (basedir </> "eveapi.db")
+
+openDB :: IO EVEDB
+openDB = do 
+  basedir <- getAppUserDataDirectory "eveapi"
+  createDirectoryIfMissing True basedir
+  openEVEDB (basedir </> "eveapi.db")
 
 -- |Run an EVE action in offline mode.
 runEVEOffline :: EVE Offline a -> IO a
-runEVEOffline = undefined
+runEVEOffline m = bracket (openDB False) closeEVEDB $ \ db ->
+  fst `fmap` unEve m (EveState db k Nothing)
+  
 
 

@@ -308,15 +308,19 @@ additionalTables = [
 additionalTableNames :: [String]
 additionalTableNames = map tabName additionalTables
 
--- |Opens an EVE library database. If the given file does not exist, this
--- function will create it and populate it with the initial data (this
--- takes awhile). The Left value will be an error message on failure.
+-- |Opens an EVE library database. The boolean determines whether or not
+-- this function should assume network connectivity. If it is true, then
+-- if the given file does not exist, this function will create it and
+-- populate it with the initial data (this takes awhile). If it is not
+-- true, then it will raise an EVEDatabaseError.
 --
 -- If there is a problem opening the database, this function will throw
--- an EVEDatabaseError or a SQLite exception..
-openEVEDB :: FilePath -> IO EVEDB
-openEVEDB loc = do
+-- an EVEDatabaseError or a SQLite exception.
+openEVEDB :: FilePath -> Bool -> IO EVEDB
+openEVEDB loc useNetwork = do
   fileExists <- doesFileExist loc
+  when ((not fileExists) && (not useNetwork)) $
+    throwIO (EVEDatabaseError "Could not open file and useNetwork was False")
   unless fileExists $ downloadBaseDB loc
   conn <- openConnection loc
   res  <- execStatement conn getAllTables
@@ -332,6 +336,14 @@ openEVEDB loc = do
       , cacheOn = cacheOnMV
       }
 
+-- |This version of openEVEDB is like the former, but will not utilize a
+-- network. Thus, if the database does not exist, or is not properly set
+-- up, this routine will return an error.
+openConnectionlessEVEDB :: FilePath -> IO EVEDB
+openConnectionlessEVEDB loc = do
+  fileExists <- doesFileExist loc
+  unless fileExists $ 
+
 -- |Close an EVE library database. The handle will no longer be valid; using
 -- it will lead to unpredictable errors.
 closeEVEDB :: EVEDB -> IO ()
@@ -345,7 +357,7 @@ downloadBaseDB dest = do
  where
   dbReq :: Request ByteString
   dbReq       = mkRequest GET dbLink
-  Just dbLink = parseURI "http://eve.no-ip.de/dom103/dom103-sqlite3-v1.db.bz2"
+  Just dbLink = parseURI "http://eve.no-ip.de/tyr104/tyr104-sqlite3-v1.db.bz2"
 
 disableCache :: EVEDB -> IO ()
 disableCache db = takeMVar (cacheOn db) >> putMVar (cacheOn db) False
