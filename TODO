@@ -1,0 +1,3 @@
+
+- Validate that limited and full API keys are what they say they are.
+- Validate that the database on disk is correct.
