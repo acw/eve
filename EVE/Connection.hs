@@ -15,11 +15,10 @@ module EVE.Connection(
 
 import Control.Exception     (bracket)
 import Control.Monad         (unless)
-import Data.Maybe            (listToMaybe)
 import Data.Word             (Word64)
 import EVE.APIKey            (APIKey, FullAPIKey, LimitedAPIKey)
 import EVE.Internal.DB       (openDB, closeDB, EVEDatabaseException(..))
-import EVE.Internal.Monad    (EVE(..), newEveState, runAPIMethod)
+import EVE.Internal.Monad    (EVE(..), newEveState, runAPIMethod, mread)
 import Text.XML.Light        (Element)
 import Text.XML.Light.Helpers(getElementData)
 
@@ -81,6 +80,4 @@ tranquilityServerStatus = do
     players <- mread =<< getElementData "onlinePlayers" xml
     return players
 
-mread :: Read a => String -> Maybe a
-mread  = fmap fst . listToMaybe . reads
 

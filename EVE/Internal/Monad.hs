@@ -11,6 +11,7 @@ module EVE.Internal.Monad(
        , runAPIMethod
        , runDBQuery
        , findDoubleColumn, findIntColumn, findStringColumn
+       , mread
        )
  where
 
@@ -25,6 +26,7 @@ import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Lazy.Char8     (pack, unpack)
 import Data.Int                       (Int64)
 import Data.List                      (intercalate)
+import Data.Maybe                     (listToMaybe)
 import Data.Time.Format               (formatTime, readTime)
 import Data.Time.LocalTime            (getCurrentTimeZone, utcToLocalTime)
 import Data.Time.Units                (Second)
@@ -184,4 +186,6 @@ findStringColumn key row =
     Just _          -> throw (QueryFailure $ "Wrong type for field: " ++ key)
     Nothing         -> throw (QueryFailure $ "Non-existent field: " ++ key)
 
+mread :: Read a => String -> Maybe a
+mread  = fmap fst . listToMaybe . reads
 
