@@ -2,7 +2,7 @@ module EVE.Connection(
          module EVE.APIKey
        , EVE
        --
-       , Offline, Online
+       , Offline, Online, CanGoOnline
        , runEVEWithKey
        , runEVEWithoutKey
        , runEVEOffline
