@@ -7,17 +7,23 @@ module EVE.Map( System, Constellation, Region
               , systemName, systemConstellation, systemRegion, systemSecurity
               , systemJumps
               , plotRoute, connectedTo, allSystems
+              , systemDeathStatsLastHour, systemJumpStatsLastHour 
               )
  where
 
-import Data.Int          (Int64)
-import Data.Maybe        (isJust)
-import qualified Data.Set          as Set
-import Database.SQLite   (Value(..),Row)
-import EVE.Internal.Monad(EVE,EveApiException(..),runDBQuery,throwEVE,
-                          findIntColumn, findStringColumn, findDoubleColumn)
+import Control.Monad         (foldM)
+import Data.Int              (Int64)
+import Data.Maybe            (isJust)
+import qualified Data.Set    as Set
+import Database.SQLite       (Value(..),Row)
+import EVE.Connection        (CanGoOnline)
+import EVE.Internal.Monad    (EVE,EveApiException(..),runDBQuery,throwEVE,
+                              findIntColumn, findStringColumn, findDoubleColumn,
+                              mread, runAPIMethod)
+import Text.XML.Light        (unqual,Element)
+import Text.XML.Light.Helpers(mapElements)
+import Text.XML.Light.Proc   (findAttr)
 
-import Debug.Trace
 
 --
 
@@ -221,8 +227,7 @@ systemJumps (System _ _ id _) = do
 
 plotRoute :: System -> System -> (Maybe (System -> EVE s Bool)) ->
              EVE s (Maybe [System])
-plotRoute start end mfilter = trace ("plotting " ++ show start ++ " -> " ++ show end) $
-  runSearch Set.empty [(start,[start])]
+plotRoute start end mfilter = runSearch Set.empty [(start,[start])]
  where
   runSearch _    []              = return Nothing
   runSearch done ((x,path):rest) = do
@@ -264,4 +269,47 @@ allSystems = do
                   , "      mapSolarSystems.constellationId "
                   ]
 
+-- |For the past hour, for each system that had someone killed in it, display
+-- the number of player ships killed in that solar system, the number of NPC
+-- ships killed in that solar system, and the number of pods killed in that
+-- solar system.
+systemDeathStatsLastHour :: CanGoOnline s =>
+                            EVE s [(System, Integer, Integer, Integer)]
+systemDeathStatsLastHour = do
+  xml <- runAPIMethod "map/Kills" []
+  case parseResult xml of
+    Just res -> foldM toSystemQuads [] res
+    Nothing  -> throwEVE (EveApiXmlParseError (show xml))
+ where
+  toSystemQuads res (a,b,c,d) = do
+    system <- findSystemById a
+    case system of
+      Just x  -> return ((x,b,c,d):res)
+      Nothing -> return res
+  parseResult :: Element -> Maybe [(Int64, Integer, Integer, Integer)]
+  parseResult xml = mapElements "row" xml $ \ row -> do
+    id   <- mread =<< findAttr (unqual "solarSystemID") row
+    pcs  <- mread =<< findAttr (unqual "shipKills")     row
+    npcs <- mread =<< findAttr (unqual "factionKills")  row
+    pods <- mread =<< findAttr (unqual "podKills")      row
+    return (id, pcs, npcs, pods)
+
+-- |For the past hour, for each system that had someone jump into (?) them,
+-- say how many jumps happened.
+systemJumpStatsLastHour :: CanGoOnline s => EVE s [(System, Integer)]
+systemJumpStatsLastHour  = do
+  xml <- runAPIMethod "map/Jumps" []
+  case parseResult xml of
+    Just res -> foldM toSystemPairs [] res
+    Nothing  -> throwEVE (EveApiXmlParseError (show xml))
+ where
+  toSystemPairs res (a,b) = do
+    system <- findSystemById a
+    case system of
+      Just x  -> return ((x,b):res)
+      Nothing -> return res
+  parseResult xml = mapElements "row" xml $ \ row -> do
+    id  <- mread =<< findAttr (unqual "solarSystemID") row
+    cnt <- mread =<< findAttr (unqual "shipJumps")     row
+    return (id, cnt)
 
