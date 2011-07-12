@@ -2,28 +2,34 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module EVE.Internal.Monad(
          EVE(..)
+       , EveApiException(..)
        , newEveState
        --
        , getApiKey
        , runIO
        , throwEVE
        , runAPIMethod
+       , runDBQuery
+       , findDoubleColumn, findIntColumn, findStringColumn
        )
  where
 
 
 import Control.Applicative            (Applicative(..))
-import Control.Exception              (Exception, throwIO, SomeException(..))
+import Control.Exception              (Exception, throwIO, SomeException(..)
+                                      ,throw)
 import Control.Monad                  (ap)
 import Control.RateLimit              (rateLimitInvocation)
 import Data.ByteString.Lazy.Progress  (trackProgressString)
 import qualified Data.ByteString.Lazy as BS
 import Data.ByteString.Lazy.Char8     (pack, unpack)
+import Data.Int                       (Int64)
 import Data.List                      (intercalate)
 import Data.Time.Format               (formatTime, readTime)
 import Data.Time.LocalTime            (getCurrentTimeZone, utcToLocalTime)
 import Data.Time.Units                (Second)
 import Data.Typeable                  (Typeable)
+import Database.SQLite                (Value(..),Row)
 import Network.HTTP                   (simpleHTTP)
 import Network.HTTP.Base              (Response(..), RequestMethod(..),
                                        Request(..))
@@ -51,6 +57,7 @@ data EveApiException = EveApiConnectionReset
                      | EveApiHttpParseError String
                      | EveApiHttpUnknownError String
                      | EveApiXmlParseError String
+                     | QueryFailure String
  deriving (Show, Typeable)
 
 instance Exception EveApiException
@@ -149,5 +156,32 @@ runAPIMethod method args = EVE $ \ s -> do
           return (doc, s)
  where
   reqHash = method ++ "|" ++ intercalate "^" (map (uncurry (++)) args)
+
+-- |Run a database query, returning the results in SQLite format.
+runDBQuery :: String -> EVE s (Either String [[Row Value]])
+runDBQuery query = EVE $ \ s -> do
+  res <- runQuery (esEVEDB s) query
+  return (res, s)
+
+findDoubleColumn :: String -> Row Value -> Double
+findDoubleColumn key row =
+  case lookup key row of
+    Just (Double d) -> d
+    Just _          -> throw (QueryFailure $ "Wrong type for field: " ++ key)
+    Nothing         -> throw (QueryFailure $ "Non-existent field: " ++ key)
+
+findIntColumn :: String -> Row Value -> Int64
+findIntColumn key row =
+  case lookup key row of
+    Just (Int i)    -> i
+    Just _          -> throw (QueryFailure $ "Wrong type for field: " ++ key)
+    Nothing         -> throw (QueryFailure $ "Non-existent field: " ++ key)
+
+findStringColumn :: String -> Row Value -> String
+findStringColumn key row =
+  case lookup key row of
+    Just (Text s)   -> s
+    Just _          -> throw (QueryFailure $ "Wrong type for field: " ++ key)
+    Nothing         -> throw (QueryFailure $ "Non-existent field: " ++ key)
 
 

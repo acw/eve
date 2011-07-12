@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module EVE.Internal.DB(
          EVEDB
        , EVEDatabaseException(..)
@@ -9,6 +10,7 @@ module EVE.Internal.DB(
        , forceCacheTableExistence
        , checkCachedRequest
        , addRequestedEntry
+       , runQuery
        )
  where
 
@@ -185,3 +187,6 @@ addRequestedEntry :: EVEDB -> String -> String -> String -> IO ()
 addRequestedEntry (EVEDB chan) req resp expire =
   runStatement_ chan (insertCache req resp expire)
 
+-- |Run the given query.
+runQuery :: EVEDB -> String -> IO (Either String [[Row Value]])
+runQuery (EVEDB chan) req = runStatement chan req
