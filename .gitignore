@@ -1,0 +1,5 @@
+.cabal-sandbox/
+cabal.sandbox.config
+YC*
+sqlite-latest.sqlite
+dist/
