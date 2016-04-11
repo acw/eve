@@ -6,13 +6,16 @@ module EVE.API.XML.Helpers(
 
 import Control.Concurrent.MVar(newMVar,modifyMVar)
 import Control.Exception(SomeException, handle)
-import Control.Lens((^.))
+import Control.Lens((^.), set)
 import Data.ByteString.Char8(pack)
 import Data.String(IsString(..))
 import Data.Time.Clock(UTCTime, getCurrentTime)
 import Data.Time.Format(defaultTimeLocale, parseTimeM)
+import Data.Version
 import EVE.Console(Console, logs)
-import Network.Wreq(post, responseStatus, statusCode, responseBody)
+import Network.Wreq(postWith, responseStatus, statusCode, responseBody,
+                    defaults, header)
+import Paths_EVE(version)
 import Text.XML.Light(QName(..), Element(..),
                       parseXMLDoc, findChild, strContent)
 
@@ -53,10 +56,12 @@ cachedFetcher con apifun args parser =
   --
   url  = "https://api.eve-online.com/" ++ apifun ++ ".xml.aspx"
   args' = map (\ (a,b) -> (pack a, pack b)) args
+  agent = "Haskell-EVE/"++ showVersion version ++ " (http://github.com/acw/eve)"
+  agentOptions = set (header "User-Agent") [fromString agent] defaults
   --
   fetchItemFromNet old =
     handle (\ e -> return (old, Left (show (e :: SomeException)))) $
-      do resp <- post url args'
+      do resp <- postWith agentOptions url args'
          case resp ^. responseStatus ^. statusCode of
            200 ->
              case parseXMLDoc (resp ^. responseBody) of
