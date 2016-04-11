@@ -15,7 +15,8 @@ module EVE.Region(
 import Control.Lens(view)
 import Control.Lens.TH(makeLenses)
 import EVE.Faction(Faction, toFactionId, findFactionById)
-import EVE.Static.Database(EVEDB, evedbRegions)
+import EVE.State(EVE, stDatabase)
+import EVE.Static.Database(evedbRegions)
 import EVE.Static.Database.Class(EVEDatabase(..))
 import EVE.Static.Database.Region(regionByName, _regName, _regFaction)
 import EVE.Static.Database.TypeIds(TypeId)
@@ -32,15 +33,15 @@ data Region = Region {
 
 makeLenses ''Region
 
-toRegionId :: EVEDB -> TypeId -> Maybe RegionId
-toRegionId evedb tid =
-  case dbLookup tid (view evedbRegions evedb) of
+toRegionId :: EVE a -> TypeId -> Maybe RegionId
+toRegionId eve tid =
+  case dbLookup tid (view (stDatabase . evedbRegions) eve) of
     Nothing -> Nothing
     Just _  -> Just (RID tid)
 
-findRegionById :: EVEDB -> RegionId -> Maybe Region
-findRegionById evedb rid@(RID tid) =
-  case dbLookup tid (view evedbRegions evedb) of
+findRegionById :: EVE a -> RegionId -> Maybe Region
+findRegionById eve rid@(RID tid) =
+  case dbLookup tid (view (stDatabase . evedbRegions) eve) of
     Nothing -> Nothing
     Just dbr ->
       let _regionId      = rid
@@ -48,13 +49,13 @@ findRegionById evedb rid@(RID tid) =
           _regionFaction = case _regFaction dbr of
                              Nothing -> Nothing
                              Just ftid ->
-                               do factionId <- toFactionId evedb ftid
-                                  findFactionById evedb factionId
+                               do factionId <- toFactionId eve ftid
+                                  findFactionById eve factionId
       in Just Region{..}
 
-findRegionByName :: EVEDB -> String -> Maybe Region
-findRegionByName evedb name =
-  case regionByName (view evedbRegions evedb) name of
+findRegionByName :: EVE a -> String -> Maybe Region
+findRegionByName eve name =
+  case regionByName (view (stDatabase . evedbRegions) eve) name of
     Nothing  -> Nothing
-    Just tid -> findRegionById evedb (RID tid)
+    Just tid -> findRegionById eve (RID tid)
 

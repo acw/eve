@@ -5,7 +5,8 @@ module EVE.Graphics(
  where
 
 import Control.Lens(view)
-import EVE.Static.Database(EVEDB, evedbIconInfo)
+import EVE.State(EVE, stDatabase)
+import EVE.Static.Database(evedbIconInfo)
 import EVE.Static.Database.Class(EVEDatabase(..))
 import EVE.Static.Database.Icon(_iconId)
 import EVE.Static.Database.TypeIds(TypeId)
@@ -13,8 +14,8 @@ import EVE.Static.Database.TypeIds(TypeId)
 newtype IconId = IID TypeId
  deriving (Eq, Ord, Show, Read)
 
-toIconId :: EVEDB -> TypeId -> Maybe IconId
-toIconId evedb tid = 
-  case dbLookup tid (view evedbIconInfo evedb) of
+toIconId :: EVE a -> TypeId -> Maybe IconId
+toIconId eve tid = 
+  case dbLookup tid (view (stDatabase . evedbIconInfo) eve) of
     Nothing -> Nothing
     Just x  -> Just (IID (_iconId x))

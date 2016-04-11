@@ -1,5 +1,5 @@
 Name: EVE
-Version: 2.0.0
+Version: 2.0.1
 Build-Type: Simple
 Cabal-Version: >= 1.6
 License: BSD3
@@ -39,7 +39,9 @@ Library
   Exposed-Modules:
                     Finder,
                     Control.Lens.Criteria,
+                    EVE,
                     EVE.API.XML.Map,
+                    EVE.Console,
                     EVE.Constellation,
                     EVE.Corporation,
                     EVE.Faction,
@@ -58,9 +60,11 @@ Library
                     EVE.Static.Database.SolarSystem,
                     EVE.Static.Database.SystemInfo,
                     EVE.Static.Database.TypeIds,
-                    EVE.System
+                    EVE.System,
+                    EVE.UserInfo
   Other-Modules:
                     EVE.API.XML.Helpers,
+                    EVE.State,
                     EVE.Static.Database.Helpers,
                     Paths_EVE
   other-extensions:

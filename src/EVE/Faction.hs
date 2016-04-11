@@ -22,10 +22,11 @@ module EVE.Faction(
 
 import                Control.Lens(view)
 import                Control.Lens.TH(makeLenses)
-import                EVE.Corporation
-import                EVE.Graphics
-import                EVE.Race
-import                EVE.Static.Database(EVEDB, evedbFactionInfo)
+import                EVE.Corporation(CorporationId, toCorporationId)
+import                EVE.Graphics(IconId, toIconId)
+import                EVE.Race(Race, toRaceIds, findRaceById)
+import                EVE.State(EVE, stDatabase)
+import                EVE.Static.Database(evedbFactionInfo)
 import                EVE.Static.Database.Class(EVEDatabase(..))
 import qualified      EVE.Static.Database.Faction as DBF
 import                EVE.Static.Database.TypeIds(TypeId)
@@ -54,26 +55,28 @@ instance Eq Faction where
 
 makeLenses ''Faction
 
-toFactionId :: EVEDB -> TypeId -> Maybe FactionId
-toFactionId evedb tid =
-  case dbLookup tid (view evedbFactionInfo evedb) of
+toFactionId :: EVE a -> TypeId -> Maybe FactionId
+toFactionId eve tid =
+  case dbLookup tid (view (stDatabase . evedbFactionInfo) eve) of
     Nothing -> Nothing
     Just _  -> Just (FID tid)
 
-findFactionById :: EVEDB -> FactionId -> Maybe Faction
-findFactionById evedb (FID tid) =
-  convertDBFaction evedb (dbLookup tid (view evedbFactionInfo evedb))
+findFactionById :: EVE a -> FactionId -> Maybe Faction
+findFactionById eve (FID tid) =
+  convertDBFaction eve
+    (dbLookup tid (view (stDatabase . evedbFactionInfo) eve))
 
-findFactionByName :: EVEDB -> String -> Maybe Faction
-findFactionByName evedb name =
-  convertDBFaction evedb (DBF.factionByName (view evedbFactionInfo evedb) name)
+findFactionByName :: EVE a -> String -> Maybe Faction
+findFactionByName eve name =
+  convertDBFaction eve
+    (DBF.factionByName (view (stDatabase . evedbFactionInfo) eve) name)
 
-convertDBFaction :: EVEDB -> Maybe DBF.Faction -> Maybe Faction
+convertDBFaction :: EVE a -> Maybe DBF.Faction -> Maybe Faction
 convertDBFaction _     Nothing  = Nothing
-convertDBFaction evedb (Just f) = 
-  case (toSolarSystemId evedb (DBF._facHomeSystem f),
-        toRaces evedb (DBF._facRaces f),
-        toIconId evedb (DBF._facIconId f)) of
+convertDBFaction eve (Just f) = 
+  case (toSolarSystemId eve (DBF._facHomeSystem f),
+        toRaces eve (DBF._facRaces f),
+        toIconId eve (DBF._facIconId f)) of
     (Just homeSystem, Just races, Just icon) ->
        let _factionId           = FID (DBF._facId f)
            _factionName         = DBF._facName f
@@ -89,5 +92,5 @@ convertDBFaction evedb (Just f) =
        in Just Faction{..}
     _ -> Nothing
 
-toRaces :: EVEDB -> TypeId -> Maybe [Race]
-toRaces evedb tid = mapM (findRaceById evedb) =<< toRaceIds evedb tid
+toRaces :: EVE a -> TypeId -> Maybe [Race]
+toRaces eve tid = mapM (findRaceById eve) =<< toRaceIds eve tid
