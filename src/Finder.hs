@@ -6,6 +6,7 @@ import Control.Monad
 import Data.List
 import Data.Maybe
 import EVE.Static.Database
+import EVE.Console
 import EVE.System
 
 tradeHubs :: [String]

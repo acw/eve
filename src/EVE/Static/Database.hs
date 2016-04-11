@@ -1,13 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 module EVE.Static.Database(
-       -- * A nice little console abstraction
-         Console
-       , conFlush, conPut
-       , stdoutConsole, stderrConsole, nullConsole
-       , logs
        -- * The EVE database and its lenses
-       , EVEDB
+         EVEDB
        , evedbTypeIds
        , evedbBlueprintInfo
        , evedbFactionInfo
@@ -27,6 +22,7 @@ import Control.Exception(throwIO)
 import Control.Lens.TH(makeLenses)
 import Data.Yaml(FromJSON(..), decodeFileEither)
 import Database.SQLite(SQLiteHandle, openReadonlyConnection)
+import EVE.Console
 import EVE.Static.Database.BlueprintInfo
 import EVE.Static.Database.Class
 import EVE.Static.Database.Constellation
@@ -39,7 +35,6 @@ import EVE.Static.Database.SolarSystem
 import EVE.Static.Database.SystemInfo
 import EVE.Static.Database.TypeIds
 import Paths_EVE(getDataFileName)
-import System.IO(hPutStr, hFlush, stderr, stdout)
 
 data EVEDB = EVEDB {
        _evedbTypeIds        :: TypeIdDatabase
@@ -55,16 +50,6 @@ data EVEDB = EVEDB {
      }
 
 makeLenses ''EVEDB
-
-data Console = Console {
-       _conPut   :: String -> IO ()
-     , _conFlush :: IO ()
-     }
-
-makeLenses ''Console
-
-logs :: Console -> String -> IO ()
-logs c s = _conPut c s >> _conFlush c
 
 loadYamlDatabase :: (FromJSON a, EVEDatabase k v a) => Console -> String -> IO a
 loadYamlDatabase con name =
@@ -88,15 +73,6 @@ loadSQLDatabase con name sql builder =
      res <- builder sql
      logs con (show (dbRecordCount res) ++ " records loaded.\n")
      return res
-
-stdoutConsole :: Console
-stdoutConsole = Console (hPutStr stdout) (hFlush stdout)
-
-stderrConsole :: Console
-stderrConsole = Console (hPutStr stderr) (hFlush stderr)
-
-nullConsole :: Console
-nullConsole = Console (const (return ())) (return ())
 
 loadStaticData :: Console -> IO EVEDB
 loadStaticData con =
