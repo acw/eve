@@ -12,16 +12,17 @@ import EVE.API.XML.Helpers(cachedFetcher)
 import EVE.Static.Database.TypeIds(TypeId)
 import Text.Read(readMaybe)
 import Text.XML.Light(Element, findElements, findAttr)
+import           EVE.Console(Console)
 
 data MapAPI = MapAPI {
        getMapJumpCounts :: IO (Either String [(TypeId, Word)])
      , getMapKillCounts :: IO (Either String [(TypeId, Word, Word, Word)])
      }
 
-initMapAPI :: IO MapAPI
-initMapAPI =
-  do getMapJumpCounts <- cachedFetcher "map/Jumps" [] readJumpInfo
-     getMapKillCounts <- cachedFetcher "map/Kills" [] readKillInfo
+initMapAPI :: Console -> IO MapAPI
+initMapAPI con =
+  do getMapJumpCounts <- cachedFetcher con "map/Jumps" [] readJumpInfo
+     getMapKillCounts <- cachedFetcher con "map/Kills" [] readKillInfo
      return MapAPI{..}
 
 readJumpInfo :: Element -> Maybe [(TypeId, Word)]

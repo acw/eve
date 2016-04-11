@@ -11,6 +11,7 @@ import Data.ByteString.Char8(pack)
 import Data.String(IsString(..))
 import Data.Time.Clock(UTCTime, getCurrentTime)
 import Data.Time.Format(defaultTimeLocale, parseTimeM)
+import EVE.Console(Console, logs)
 import Network.Wreq(post, responseStatus, statusCode, responseBody)
 import Text.XML.Light(QName(..), Element(..),
                       parseXMLDoc, findChild, strContent)
@@ -25,10 +26,10 @@ fetchExpireTime el =
   do expireElement <- findChild "cachedUntil" el
      parseTimeM True defaultTimeLocale "%F %T" (strContent expireElement)
 
-cachedFetcher :: String -> [(String,String)] ->
+cachedFetcher :: Console -> String -> [(String,String)] ->
                  (Element -> Maybe a) ->
                  IO (IO (Either String a))
-cachedFetcher apifun args parser =
+cachedFetcher con apifun args parser =
   do mv <- newMVar NoCache
      return (fetch mv)
  where
@@ -36,9 +37,19 @@ cachedFetcher apifun args parser =
     do now <- getCurrentTime
        modifyMVar mv $ \ et ->
          case et of
-           NoCache -> fetchItemFromNet et
-           CachedItem t _ | t < now -> fetchItemFromNet et
-           CachedItem _ v -> return (et, Right v)
+           NoCache ->
+             do logs con ("Running initial API call for "++show apifun++" ...")
+                res <- fetchItemFromNet et
+                logs con (" done.\n")
+                return res
+           CachedItem t _ | t < now ->
+             do logs con ("Re-fetching expired entry for "++show apifun++" ...")
+                res <- fetchItemFromNet et
+                logs con (" done.\n")
+                return res
+           CachedItem _ v ->
+             do logs con ("Using cached entry for " ++ show apifun ++ ".\n")
+                return (et, Right v)
   --
   url  = "https://api.eve-online.com/" ++ apifun ++ ".xml.aspx"
   args' = map (\ (a,b) -> (pack a, pack b)) args
